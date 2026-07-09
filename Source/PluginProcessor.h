@@ -34,6 +34,7 @@ public:
     float getLufsIntegrated() const noexcept;
     float getStereoCorrelation() const noexcept;
     float getStereoWidth() const noexcept;
+    DspEngine::MeterSnapshot getMeterSnapshot() const noexcept;
     bool copyAnalyzerBuffer(DspEngine::AnalyzerBuffer& destination) const noexcept;
 
     juce::AudioProcessorEditor* createEditor() override;

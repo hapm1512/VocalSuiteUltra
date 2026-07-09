@@ -45,6 +45,12 @@ namespace Parameters
         addFloat(params, "NOISE_FLOOR", "Noise Floor", -90.0f, -30.0f, -58.0f);
         addFloat(params, "NOISE_ATTACK", "Noise Attack", 1.0f, 80.0f, 12.0f);
         addFloat(params, "NOISE_RELEASE", "Noise Release", 30.0f, 500.0f, 180.0f);
+        addBool(params, "NOISE_AUTO_FLOOR", "Noise Auto Floor", true);
+        addBool(params, "NOISE_HUM_ON", "Hum Remove", true);
+        addFloat(params, "NOISE_HUM_FREQ", "Hum Frequency", 50.0f, 60.0f, 50.0f, 10.0f);
+        addFloat(params, "NOISE_HUM_AMOUNT", "Hum Amount", 0.0f, 100.0f, 45.0f);
+        addFloat(params, "NOISE_SPECTRAL", "Spectral Denoise", 0.0f, 100.0f, 42.0f);
+        addFloat(params, "NOISE_BREATH_PRESERVE", "Breath Preserve", 0.0f, 100.0f, 65.0f);
 
         addBool(params, "PREAMP_ON", "Preamp", true);
         params.push_back(std::make_unique<juce::AudioParameterChoice>(

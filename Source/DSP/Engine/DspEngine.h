@@ -37,6 +37,26 @@ public:
 
     static constexpr int analyzerFifoSize = 4096;
     using AnalyzerBuffer = std::array<float, analyzerFifoSize>;
+
+    struct MeterSnapshot
+    {
+        float inputPeak = 0.0f;
+        float inputRms = 0.0f;
+        float outputPeak = 0.0f;
+        float outputRms = 0.0f;
+        float gainReductionDb = 0.0f;
+        float truePeak = 0.0f;
+        float truePeakDb = -100.0f;
+        float outputPeakDb = -100.0f;
+        float outputRmsDb = -100.0f;
+        float lufsMomentary = -70.0f;
+        float lufsShortTerm = -70.0f;
+        float lufsIntegrated = -70.0f;
+        float stereoCorrelation = 1.0f;
+        float stereoWidth = 0.0f;
+    };
+
+    MeterSnapshot getMeterSnapshot() const noexcept;
     bool copyAnalyzerBuffer(AnalyzerBuffer& destination) const noexcept;
 
 private:
@@ -73,6 +93,10 @@ private:
     {
         float noiseEnvelope = 0.0f;
         float noiseGain = 1.0f;
+        float noiseFloorEstimate = 0.0008f;
+        float noiseHighState = 0.0f;
+        float noiseBreathEnvelope = 0.0f;
+
 
         float gateEnvelope = 0.0f;
         float gateGain = 1.0f;
@@ -93,6 +117,9 @@ private:
         BiquadState hpf2;
         BiquadState hpf3;
         BiquadState hpf4;
+        BiquadState humFundamental;
+        BiquadState humSecond;
+        BiquadState humThird;
 
         BiquadState mudCut;
         BiquadState harshCut;
@@ -109,6 +136,9 @@ private:
             hpf2.reset();
             hpf3.reset();
             hpf4.reset();
+            humFundamental.reset();
+            humSecond.reset();
+            humThird.reset();
             mudCut.reset();
             harshCut.reset();
             surgicalNotch.reset();
@@ -210,7 +240,7 @@ private:
 
     MeterEngine outputMeter;
 
-    AnalyzerBuffer analyzerFifo {};
+    std::array<std::atomic<float>, analyzerFifoSize> analyzerFifo {};
     std::atomic<int> analyzerWriteIndex { 0 };
     std::atomic<bool> analyzerReady { false };
 
