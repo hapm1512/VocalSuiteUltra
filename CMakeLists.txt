@@ -41,6 +41,9 @@ target_sources(VocalSuiteUltraPro
         Source/DSP/Meter/MeterEngine.h
         Source/DSP/Meter/MeterEngine.cpp
 
+        Source/DSP/Compressor/FET1176.h
+        Source/DSP/Compressor/FET1176.cpp
+
         Source/DSP/Saturation/Saturation.h
         Source/DSP/Saturation/Saturation.cpp
         Source/DSP/HiEnd/HiEndExciter.h

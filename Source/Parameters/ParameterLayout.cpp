@@ -111,7 +111,9 @@ namespace Parameters
         addFloat(params, "COMP_INPUT", "Compressor Input", -24.0f, 24.0f, 0.0f);
         addFloat(params, "COMP_OUTPUT", "Compressor Output", -24.0f, 24.0f, 0.0f);
         addFloat(params, "COMP_MIX", "Compressor Mix", 0.0f, 100.0f, 75.0f);
+        addFloat(params, "COMP_SC_HPF", "Compressor Sidechain HPF", 20.0f, 400.0f, 90.0f);
         addBool(params, "COMP_AUTO_MAKEUP", "Compressor Auto Makeup", true);
+        addBool(params, "COMP_ALL_BUTTONS", "Compressor All Buttons", false);
 
         addBool(params, "TONE_ON", "Tone EQ", true);
         addFloat(params, "TONE_LOW", "Tone Low", -12.0f, 12.0f, 0.0f);

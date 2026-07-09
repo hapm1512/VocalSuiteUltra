@@ -854,23 +854,34 @@ void DspEngine::applyCoreCompressor(juce::AudioBuffer<float>& buffer,
 
     const float inputGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "COMP_INPUT", 0.0f));
     const float outputGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "COMP_OUTPUT", 0.0f));
-    const float mix = getFloatParam(apvts, "COMP_MIX", 75.0f) / 100.0f;
+    const float mix = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "COMP_MIX", 75.0f) / 100.0f);
     const float thresholdDb = getFloatParam(apvts, "COMP_THRESHOLD", -18.0f);
     const int ratioChoice = getChoiceParam(apvts, "COMP_RATIO", 0);
-    const float ratio = ratioChoice == 1 ? 8.0f : (ratioChoice == 2 ? 12.0f : (ratioChoice == 3 ? 20.0f : 4.0f));
+    const bool allButtons = getBoolParam(apvts, "COMP_ALL_BUTTONS", false);
     const bool autoMakeup = getBoolParam(apvts, "COMP_AUTO_MAKEUP", true);
 
-    const float attackMs = getFloatParam(apvts, "COMP_ATTACK", 12.0f);
-    const float releaseMs = getFloatParam(apvts, "COMP_RELEASE", 80.0f);
+    const float ratio = allButtons ? 20.0f
+                                   : (ratioChoice == 1 ? 8.0f
+                                      : (ratioChoice == 2 ? 12.0f
+                                         : (ratioChoice == 3 ? 20.0f : 4.0f)));
 
-    // 1176-style control mapping: higher knob value means faster timing.
-    const float attackTimeMs = juce::jlimit(0.08f, 25.0f, attackMs);
-    const float releaseTimeMs = juce::jlimit(12.0f, 500.0f, releaseMs);
+    // 1176 style: attack/release controls are deliberately fast.
+    // Higher UI values move toward faster response, but clamped for safety.
+    const float attackKnob = juce::jlimit(0.0f, 100.0f, getFloatParam(apvts, "COMP_ATTACK", 12.0f));
+    const float releaseKnob = juce::jlimit(0.0f, 100.0f, getFloatParam(apvts, "COMP_RELEASE", 80.0f));
+
+    const float attackTimeMs = juce::jmap(attackKnob, 0.0f, 100.0f, 0.80f, 0.05f);
+    const float baseReleaseMs = juce::jmap(releaseKnob, 0.0f, 100.0f, 520.0f, 45.0f);
+
+    const float scHpfHz = juce::jlimit(20.0f, 400.0f, getFloatParam(apvts, "COMP_SC_HPF", 90.0f));
+    const float scHpfCoeff = makeOnePoleCoefficient(scHpfHz, sampleRate);
     const float attackCoef = makeCoefficient(attackTimeMs, sampleRate);
-    const float releaseCoef = makeCoefficient(releaseTimeMs, sampleRate);
-    const float makeupGain = autoMakeup ? juce::Decibels::decibelsToGain((ratio - 1.0f) * 0.55f) : 1.0f;
 
-    float maxReduction = gainReductionDb.load();
+    // Analog style auto makeup: conservative to avoid output jump.
+    const float makeupDb = autoMakeup ? juce::jlimit(0.0f, 7.0f, (ratio - 1.0f) * 0.33f) : 0.0f;
+    const float makeupGain = juce::Decibels::decibelsToGain(makeupDb);
+
+    float maxReduction = 0.0f;
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
@@ -881,23 +892,49 @@ void DspEngine::applyCoreCompressor(juce::AudioBuffer<float>& buffer,
         {
             const float dry = data[i];
             const float driven = dry * inputGain;
-            const float rectified = std::abs(driven);
-            const float detectorCoef = rectified > state.compressorEnvelope ? attackCoef : releaseCoef;
+
+            // Sidechain HPF reduces low-frequency pumping without changing audio tone.
+            const float detectorSignal = onePoleHighPassFromLowPass(driven, scHpfCoeff, state.compressorDetectorHpState);
+            const float rectified = std::abs(detectorSignal);
+
+            const float detectorCoef = rectified > state.compressorEnvelope ? attackCoef : state.compressorProgramRelease;
             state.compressorEnvelope = detectorCoef * state.compressorEnvelope + (1.0f - detectorCoef) * rectified;
 
             const float levelDb = safeDb(state.compressorEnvelope);
             const float overDb = juce::jmax(0.0f, levelDb - thresholdDb);
-            const float kneeDb = 3.0f;
+
+            // Soft knee and All Buttons colour. All Buttons has harder knee and more attitude.
+            const float kneeDb = allButtons ? 1.5f : 4.0f;
             const float kneeAmount = juce::jlimit(0.0f, 1.0f, overDb / kneeDb);
-            const float effectiveOverDb = overDb * kneeAmount;
+            float effectiveOverDb = overDb * kneeAmount;
+
+            if (allButtons)
+                effectiveOverDb *= 1.18f + juce::jlimit(0.0f, 0.18f, effectiveOverDb * 0.012f);
+
             const float reductionDb = effectiveOverDb - (effectiveOverDb / ratio);
             const float targetGain = juce::Decibels::decibelsToGain(-reductionDb);
-            const float gainCoef = targetGain < state.compressorGain ? attackCoef : releaseCoef;
 
+            // Program-dependent release: heavier compression recovers more slowly.
+            const float releaseScale = 0.60f + juce::jlimit(0.0f, 1.65f, reductionDb / 10.0f);
+            const float programReleaseMs = juce::jlimit(25.0f, 900.0f, baseReleaseMs * releaseScale);
+            const float releaseCoef = makeCoefficient(programReleaseMs, sampleRate);
+            state.compressorProgramRelease = 0.996f * state.compressorProgramRelease + 0.004f * releaseCoef;
+
+            const float gainCoef = targetGain < state.compressorGain ? attackCoef : state.compressorProgramRelease;
             state.compressorGain = gainCoef * state.compressorGain + (1.0f - gainCoef) * targetGain;
 
-            const float compressed = driven * state.compressorGain * makeupGain * outputGain;
-            data[i] = dry * (1.0f - mix) + compressed * mix;
+            float compressed = driven * state.compressorGain;
+
+            // Mild FET colour: subtle and level dependent, kept below clipping.
+            if (allButtons)
+                compressed = std::tanh(compressed * 1.08f) * 0.965f;
+            else
+                compressed = compressed + 0.012f * (compressed * compressed * compressed);
+
+            compressed *= makeupGain * outputGain;
+
+            const float wet = dry * (1.0f - mix) + compressed * mix;
+            data[i] = juce::jlimit(-1.15f, 1.15f, wet);
             maxReduction = juce::jmax(maxReduction, reductionDb);
         }
     }

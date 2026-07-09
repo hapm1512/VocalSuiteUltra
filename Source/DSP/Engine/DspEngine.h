@@ -83,6 +83,8 @@ private:
         float deEsserGain = 1.0f;
         float compressorGain = 1.0f;
         float compressorEnvelope = 0.0f;
+        float compressorDetectorHpState = 0.0f;
+        float compressorProgramRelease = 1.0f;
         float hiEndState = 0.0f;
         float tapeLowState = 0.0f;
         float tapeHighState = 0.0f;
