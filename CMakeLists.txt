@@ -53,6 +53,9 @@ target_sources(VocalSuiteUltraPro
         Source/GUI/Meters/LufsMeter.cpp
         Source/GUI/Meters/CorrelationMeter.h
         Source/GUI/Meters/CorrelationMeter.cpp
+
+        Source/GUI/Analyzer/SpectrumAnalyzer.h
+        Source/GUI/Analyzer/SpectrumAnalyzer.cpp
 )
 
 target_include_directories(VocalSuiteUltraPro
@@ -64,6 +67,7 @@ target_include_directories(VocalSuiteUltraPro
         Source/GUI/Knobs
         Source/GUI/LookAndFeel
         Source/GUI/Meters
+        Source/GUI/Analyzer
 )
 
 target_compile_definitions(VocalSuiteUltraPro

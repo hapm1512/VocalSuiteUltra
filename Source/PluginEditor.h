@@ -9,6 +9,7 @@
 #include "LevelMeter.h"
 #include "LufsMeter.h"
 #include "CorrelationMeter.h"
+#include "SpectrumAnalyzer.h"
 
 class VocalSuiteUltraProAudioProcessorEditor final : public juce::AudioProcessorEditor
 {
@@ -24,8 +25,10 @@ private:
 
     LevelMeter inputMeter;
     LevelMeter outputMeter;
+    LevelMeter levelMeter;
     LufsMeter lufsMeter;
     CorrelationMeter correlationMeter;
+    SpectrumAnalyzer spectrumAnalyzer;
 
     juce::Rectangle<int> headerArea;
     juce::Rectangle<int> bodyArea;
