@@ -91,6 +91,14 @@ private:
         float preampDcState = 0.0f;
         float preampTransformerState = 0.0f;
         float preampOutputSmooth = 1.0f;
+        float preampLevelEnvelope = 0.0f;
+        float preampTubeGain = 1.0f;
+        float preampLowState = 0.0f;
+        float preampHighState = 0.0f;
+        float preampSlewState = 0.0f;
+        float preampLoudnessIn = 0.0f;
+        float preampLoudnessOut = 0.0f;
+        float preampLoudnessTrim = 1.0f;
 
         BiquadState hpf1;
         BiquadState hpf2;

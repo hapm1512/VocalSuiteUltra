@@ -687,6 +687,10 @@ void DspEngine::applyPreamp(juce::AudioBuffer<float>& buffer,
     const float harmonicAmount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "PREAMP_HARMONICS", 45.0f) / 100.0f);
     const float transformerAmount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "PREAMP_TRANSFORMER", 35.0f) / 100.0f);
     const float colourAmount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "PREAMP_COLOR", 50.0f) / 100.0f);
+    const float dynamicsAmount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "PREAMP_DYNAMICS", 45.0f) / 100.0f);
+    const float recoveryAmount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "PREAMP_RECOVERY", 55.0f) / 100.0f);
+    const float transientSoftness = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "PREAMP_TRANSIENT", 35.0f) / 100.0f);
+    const float harmonicBalance = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "PREAMP_BALANCE", 62.0f) / 100.0f);
 
     const float modeDriveScale = [mode]() noexcept
     {
@@ -701,20 +705,29 @@ void DspEngine::applyPreamp(juce::AudioBuffer<float>& buffer,
     }();
 
     const float driveCurve = std::pow(driveAmount, 1.18f);
-    const float drive = 1.0f + driveCurve * modeDriveScale;
+    const float baseDrive = 1.0f + driveCurve * modeDriveScale;
     const float bias = juce::jmap(biasAmount, -0.18f, 0.18f);
 
-    // Safety chain:
-    // input headroom -> analog character -> auto trim -> DC block -> soft ceiling.
+    // Safety and analogue-feel chain:
+    // input headroom -> level-dependent drive -> frequency-dependent drive -> tube recovery
+    // -> auto loudness compensation -> DC block -> slew limiting -> soft ceiling.
     const float headroomGain = juce::Decibels::decibelsToGain(-juce::jlimit(0.0f, 18.0f, headroomDb));
     const float outputGain = juce::Decibels::decibelsToGain(juce::jlimit(-18.0f, 12.0f, requestedOutputDb));
     const float autoTrimDb = -(driveCurve * (safeMode ? 8.5f : 5.8f)) - (harmonicAmount * colourAmount * 1.5f);
     const float autoTrim = juce::Decibels::decibelsToGain(autoTrimDb);
     const float targetMakeup = outputGain * autoTrim / juce::jmax(0.25f, headroomGain * (safeMode ? 1.0f : 0.80f));
     const float ceiling = juce::Decibels::decibelsToGain(juce::jlimit(-12.0f, -0.3f, ceilingDb));
+
     const float dcCoefficient = makeOnePoleCoefficient(18.0f, sampleRate);
-    const float smoothCoefficient = makeCoefficient(18.0f, sampleRate);
+    const float outputSmoothCoefficient = makeCoefficient(18.0f, sampleRate);
+    const float levelAttackCoefficient = makeCoefficient(3.0f, sampleRate);
+    const float levelReleaseCoefficient = makeCoefficient(80.0f + recoveryAmount * 220.0f, sampleRate);
+    const float tubeGainAttackCoefficient = makeCoefficient(8.0f, sampleRate);
+    const float tubeGainReleaseCoefficient = makeCoefficient(90.0f + recoveryAmount * 300.0f, sampleRate);
+    const float loudnessCoefficient = makeCoefficient(120.0f, sampleRate);
     const float transformerCoefficient = makeOnePoleCoefficient(155.0f, sampleRate);
+    const float lowDriveCoefficient = makeOnePoleCoefficient(180.0f, sampleRate);
+    const float highDriveCoefficient = makeOnePoleCoefficient(5400.0f, sampleRate);
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
@@ -726,49 +739,97 @@ void DspEngine::applyPreamp(juce::AudioBuffer<float>& buffer,
             const float dry = data[i];
             const float protectedInput = juce::jlimit(-2.0f, 2.0f, dry * headroomGain);
 
+            const float inputLevel = std::abs(protectedInput);
+            const float levelCoef = inputLevel > state.preampLevelEnvelope ? levelAttackCoefficient : levelReleaseCoefficient;
+            state.preampLevelEnvelope = levelCoef * state.preampLevelEnvelope + (1.0f - levelCoef) * inputLevel;
+
+            const float levelDrive = 0.82f + dynamicsAmount * 0.52f * (1.0f - std::exp(-state.preampLevelEnvelope * 3.0f));
+            const float dynamicDrive = baseDrive * levelDrive;
+
+            const float lowBand = onePoleLowPass(protectedInput, lowDriveCoefficient, state.preampLowState);
+            const float highBand = onePoleHighPassFromLowPass(protectedInput, highDriveCoefficient, state.preampHighState);
+            const float midBand = protectedInput - lowBand - highBand;
+
+            const float lowDrive = juce::jmax(1.0f, dynamicDrive * (0.70f + 0.18f * transformerAmount));
+            const float midDrive = dynamicDrive * (1.08f + 0.26f * colourAmount);
+            const float highDrive = juce::jmax(1.0f, dynamicDrive * (0.76f + 0.12f * harmonicAmount));
+
             const float transformerLow = onePoleLowPass(protectedInput, transformerCoefficient, state.preampTransformerState);
             const float transformerInput = protectedInput + transformerLow * (0.16f * transformerAmount);
 
-            const float triode = tubeShape(protectedInput, drive, bias);
-            const float pentode = 0.62f * softClip(protectedInput, drive * 1.55f)
-                                + 0.26f * softClip(protectedInput * 1.90f, drive * 0.88f)
-                                + 0.12f * protectedInput;
-            const float vintage = tapeShape(transformerInput, drive * 0.92f);
-            const float clean = 0.94f * protectedInput + 0.06f * softClip(protectedInput, drive * 0.65f);
-            const float transformer = transformerShape(transformerInput, drive * 0.72f, transformerAmount);
+            const float triode = tubeShape(lowBand, lowDrive, bias * 0.65f) * 0.22f
+                               + tubeShape(midBand, midDrive, bias) * 0.60f
+                               + tubeShape(highBand, highDrive, bias * 0.35f) * 0.18f;
+
+            const float pentode = 0.54f * softClip(midBand, midDrive * 1.72f)
+                                + 0.24f * softClip(midBand * 1.90f, midDrive * 0.92f)
+                                + 0.14f * softClip(highBand, highDrive * 1.15f)
+                                + 0.08f * protectedInput;
+
+            const float vintage = tapeShape(transformerInput, dynamicDrive * 0.92f);
+            const float clean = 0.94f * protectedInput + 0.06f * softClip(protectedInput, dynamicDrive * 0.65f);
+            const float transformer = transformerShape(transformerInput, dynamicDrive * 0.72f, transformerAmount);
 
             float wet = triode;
 
             switch (mode)
             {
                 case 1: wet = pentode; break;
-                case 2: wet = 0.90f * protectedInput + 0.10f * asymSoftClip(protectedInput, drive * 0.72f, bias * 0.18f); break;
+                case 2: wet = 0.90f * protectedInput + 0.10f * asymSoftClip(protectedInput, dynamicDrive * 0.72f, bias * 0.18f); break;
                 case 3: wet = vintage; break;
                 case 4: wet = clean; break;
                 default: wet = triode; break;
             }
 
-            const float secondHarm = asymSoftClip(protectedInput, drive * 0.68f, bias * 0.55f)
-                                   - softClip(protectedInput, drive * 0.62f);
-            const float thirdHarm = softClip(protectedInput * 1.55f, drive * 0.54f) - protectedInput * 0.72f;
-            const float fifthHarm = softClip(protectedInput * 2.15f, drive * 0.36f) * 0.35f - protectedInput * 0.12f;
-            const float harmonicBlend = (secondHarm * 0.48f + thirdHarm * 0.34f + fifthHarm * 0.18f)
+            const float secondHarm = asymSoftClip(protectedInput, dynamicDrive * 0.64f, bias * 0.58f)
+                                   - softClip(protectedInput, dynamicDrive * 0.60f);
+            const float thirdHarm = softClip(protectedInput * 1.55f, dynamicDrive * 0.48f) - protectedInput * 0.72f;
+            const float fifthHarm = softClip(protectedInput * 2.15f, dynamicDrive * 0.30f) * 0.35f - protectedInput * 0.12f;
+
+            const float evenWeight = 0.58f + harmonicBalance * 0.30f;
+            const float oddWeight = 1.0f - evenWeight;
+            const float harmonicBlend = (secondHarm * evenWeight
+                                      + thirdHarm * oddWeight * 0.72f
+                                      + fifthHarm * oddWeight * 0.28f)
                                       * harmonicAmount * colourAmount;
 
             wet = wet * (1.0f - transformerAmount * 0.22f)
                 + transformer * (transformerAmount * 0.22f)
                 + harmonicBlend * 0.28f;
 
+            const float overThreshold = juce::jmax(0.0f, std::abs(wet) - (0.20f + 0.10f * (1.0f - driveAmount)));
+            const float tubeReductionDb = juce::jlimit(0.0f, 2.4f, overThreshold * (3.0f + dynamicsAmount * 6.0f));
+            const float targetTubeGain = juce::Decibels::decibelsToGain(-tubeReductionDb);
+            const float tubeGainCoef = targetTubeGain < state.preampTubeGain ? tubeGainAttackCoefficient : tubeGainReleaseCoefficient;
+            state.preampTubeGain = tubeGainCoef * state.preampTubeGain + (1.0f - tubeGainCoef) * targetTubeGain;
+            wet *= state.preampTubeGain;
+
             wet = dry * (1.0f - mix) + wet * mix;
 
-            state.preampOutputSmooth = smoothCoefficient * state.preampOutputSmooth
-                                     + (1.0f - smoothCoefficient) * targetMakeup;
-
+            state.preampOutputSmooth = outputSmoothCoefficient * state.preampOutputSmooth
+                                     + (1.0f - outputSmoothCoefficient) * targetMakeup;
             wet *= state.preampOutputSmooth;
+
+            state.preampLoudnessIn = loudnessCoefficient * state.preampLoudnessIn
+                                   + (1.0f - loudnessCoefficient) * (dry * dry);
+            state.preampLoudnessOut = loudnessCoefficient * state.preampLoudnessOut
+                                    + (1.0f - loudnessCoefficient) * (wet * wet);
+
+            const float loudnessTarget = std::sqrt((state.preampLoudnessIn + 0.000001f)
+                                                 / (state.preampLoudnessOut + 0.000001f));
+            const float loudnessTrimTarget = juce::jlimit(0.55f, 1.35f, loudnessTarget);
+            state.preampLoudnessTrim = 0.995f * state.preampLoudnessTrim + 0.005f * loudnessTrimTarget;
+            wet *= safeMode ? state.preampLoudnessTrim : 1.0f;
 
             // DC blocker after asymmetric shaping.
             state.preampDcState = dcCoefficient * state.preampDcState + (1.0f - dcCoefficient) * wet;
             wet -= state.preampDcState;
+
+            // Gentle slew-rate control: it removes hard clicks from heavy drive without dulling normal vocal.
+            const float maxDelta = 0.18f - transientSoftness * 0.11f;
+            const float delta = juce::jlimit(-maxDelta, maxDelta, wet - state.preampSlewState);
+            state.preampSlewState += delta;
+            wet = state.preampSlewState;
 
             if (safeMode)
             {

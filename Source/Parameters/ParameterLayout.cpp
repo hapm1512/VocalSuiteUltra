@@ -59,6 +59,10 @@ namespace Parameters
         addFloat(params, "PREAMP_HARMONICS", "Preamp Harmonics", 0.0f, 100.0f, 45.0f);
         addFloat(params, "PREAMP_TRANSFORMER", "Preamp Transformer", 0.0f, 100.0f, 35.0f);
         addFloat(params, "PREAMP_COLOR", "Preamp Color", 0.0f, 100.0f, 50.0f);
+        addFloat(params, "PREAMP_DYNAMICS", "Preamp Tube Dynamics", 0.0f, 100.0f, 45.0f);
+        addFloat(params, "PREAMP_RECOVERY", "Preamp Recovery", 0.0f, 100.0f, 55.0f);
+        addFloat(params, "PREAMP_TRANSIENT", "Preamp Transient Softness", 0.0f, 100.0f, 35.0f);
+        addFloat(params, "PREAMP_BALANCE", "Preamp Harmonic Balance", 0.0f, 100.0f, 62.0f);
 
         addBool(params, "GATE_ON", "Gate", true);
         addFloat(params, "GATE_THRESH", "Gate Threshold", -80.0f, 0.0f, -45.0f);
