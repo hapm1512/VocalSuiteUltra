@@ -5,6 +5,7 @@ void DspEngine::prepare(double newSampleRate, int samplesPerBlock, int numChanne
     sampleRate = juce::jlimit(8000.0, 384000.0, newSampleRate);
     lastBlockSize = juce::jmax(1, samplesPerBlock);
     ensureChannelState(numChannels);
+    outputMeter.prepare(sampleRate, lastBlockSize, numChannels);
     reset();
 }
 
@@ -18,6 +19,11 @@ void DspEngine::reset()
     inputRms.store(0.0f);
     outputRms.store(0.0f);
     gainReductionDb.store(0.0f);
+    truePeak.store(0.0f);
+    truePeakDb.store(-100.0f);
+    outputPeakDb.store(-100.0f);
+    outputRmsDb.store(-100.0f);
+    outputMeter.reset();
 }
 
 void DspEngine::process(juce::AudioBuffer<float>& buffer,
@@ -34,6 +40,7 @@ void DspEngine::process(juce::AudioBuffer<float>& buffer,
     ensureChannelState(numChannels);
     sanitize(buffer);
     updateInputMeters(buffer);
+    gainReductionDb.store(0.0f);
 
     applyInputGain(buffer, apvts);
     applyAdaptiveNoiseReduction(buffer, apvts);
@@ -56,6 +63,10 @@ float DspEngine::getOutputPeak() const noexcept { return outputPeak.load(); }
 float DspEngine::getInputRms() const noexcept { return inputRms.load(); }
 float DspEngine::getOutputRms() const noexcept { return outputRms.load(); }
 float DspEngine::getGainReductionDb() const noexcept { return gainReductionDb.load(); }
+float DspEngine::getTruePeak() const noexcept { return truePeak.load(); }
+float DspEngine::getTruePeakDb() const noexcept { return truePeakDb.load(); }
+float DspEngine::getOutputPeakDb() const noexcept { return outputPeakDb.load(); }
+float DspEngine::getOutputRmsDb() const noexcept { return outputRmsDb.load(); }
 
 float DspEngine::getFloatParam(juce::AudioProcessorValueTreeState& apvts,
                                const char* parameterId,
@@ -304,25 +315,15 @@ void DspEngine::updateInputMeters(const juce::AudioBuffer<float>& buffer)
 
 void DspEngine::updateOutputMeters(const juce::AudioBuffer<float>& buffer)
 {
-    float peak = 0.0f;
-    double squareSum = 0.0;
-    int count = 0;
+    const auto frame = outputMeter.analyse(buffer, gainReductionDb.load());
 
-    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-    {
-        const auto* data = buffer.getReadPointer(ch);
-
-        for (int i = 0; i < buffer.getNumSamples(); ++i)
-        {
-            const float sample = data[i];
-            peak = juce::jmax(peak, std::abs(sample));
-            squareSum += static_cast<double>(sample) * static_cast<double>(sample);
-            ++count;
-        }
-    }
-
-    outputPeak.store(juce::jlimit(0.0f, 1.5f, peak));
-    outputRms.store(count > 0 ? std::sqrt(static_cast<float>(squareSum / static_cast<double>(count))) : 0.0f);
+    outputPeak.store(frame.peak);
+    outputRms.store(frame.rms);
+    gainReductionDb.store(frame.gainReductionDb);
+    truePeak.store(frame.truePeak);
+    truePeakDb.store(frame.truePeakDb);
+    outputPeakDb.store(frame.peakDb);
+    outputRmsDb.store(frame.rmsDb);
 }
 
 void DspEngine::applyInputGain(juce::AudioBuffer<float>& buffer,

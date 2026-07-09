@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include "../Meter/MeterEngine.h"
 
 class DspEngine final
 {
@@ -23,6 +24,10 @@ public:
     float getInputRms() const noexcept;
     float getOutputRms() const noexcept;
     float getGainReductionDb() const noexcept;
+    float getTruePeak() const noexcept;
+    float getTruePeakDb() const noexcept;
+    float getOutputPeakDb() const noexcept;
+    float getOutputRmsDb() const noexcept;
 
 private:
     struct BiquadCoefficients
@@ -182,6 +187,12 @@ private:
     std::atomic<float> inputRms { 0.0f };
     std::atomic<float> outputRms { 0.0f };
     std::atomic<float> gainReductionDb { 0.0f };
+    std::atomic<float> truePeak { 0.0f };
+    std::atomic<float> truePeakDb { -100.0f };
+    std::atomic<float> outputPeakDb { -100.0f };
+    std::atomic<float> outputRmsDb { -100.0f };
+
+    MeterEngine outputMeter;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DspEngine)
 };

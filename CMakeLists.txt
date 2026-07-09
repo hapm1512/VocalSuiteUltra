@@ -38,6 +38,9 @@ target_sources(VocalSuiteUltraPro
         Source/DSP/Engine/DspEngine.h
         Source/DSP/Engine/DspEngine.cpp
 
+        Source/DSP/Meter/MeterEngine.h
+        Source/DSP/Meter/MeterEngine.cpp
+
         Source/DSP/Saturation/Saturation.h
         Source/DSP/Saturation/Saturation.cpp
         Source/DSP/HiEnd/HiEndExciter.h
@@ -80,6 +83,7 @@ target_include_directories(VocalSuiteUltraPro
         Source/DSP/Engine
         Source/DSP/Saturation
         Source/DSP/HiEnd
+        Source/DSP/Meter
         Source/GUI/Components
         Source/GUI/Panels
         Source/GUI/Buttons
@@ -87,6 +91,7 @@ target_include_directories(VocalSuiteUltraPro
         Source/GUI/LookAndFeel
         Source/GUI/Meters
         Source/GUI/Analyzer
+
 )
 
 target_compile_definitions(VocalSuiteUltraPro

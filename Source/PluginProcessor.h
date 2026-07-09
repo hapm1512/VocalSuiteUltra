@@ -19,6 +19,16 @@ public:
 
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
+    float getInputPeak() const noexcept;
+    float getInputRms() const noexcept;
+    float getOutputPeak() const noexcept;
+    float getOutputRms() const noexcept;
+    float getGainReductionDb() const noexcept;
+    float getTruePeak() const noexcept;
+    float getTruePeakDb() const noexcept;
+    float getOutputPeakDb() const noexcept;
+    float getOutputRmsDb() const noexcept;
+
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override;
 

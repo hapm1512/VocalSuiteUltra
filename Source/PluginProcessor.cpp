@@ -38,6 +38,52 @@ void VocalSuiteUltraProAudioProcessor::processBlock(juce::AudioBuffer<float>& bu
     dspEngine.process(buffer, apvts);
 }
 
+
+float VocalSuiteUltraProAudioProcessor::getInputPeak() const noexcept
+{
+    return dspEngine.getInputPeak();
+}
+
+float VocalSuiteUltraProAudioProcessor::getInputRms() const noexcept
+{
+    return dspEngine.getInputRms();
+}
+
+float VocalSuiteUltraProAudioProcessor::getOutputPeak() const noexcept
+{
+    return dspEngine.getOutputPeak();
+}
+
+float VocalSuiteUltraProAudioProcessor::getOutputRms() const noexcept
+{
+    return dspEngine.getOutputRms();
+}
+
+float VocalSuiteUltraProAudioProcessor::getGainReductionDb() const noexcept
+{
+    return dspEngine.getGainReductionDb();
+}
+
+float VocalSuiteUltraProAudioProcessor::getTruePeak() const noexcept
+{
+    return dspEngine.getTruePeak();
+}
+
+float VocalSuiteUltraProAudioProcessor::getTruePeakDb() const noexcept
+{
+    return dspEngine.getTruePeakDb();
+}
+
+float VocalSuiteUltraProAudioProcessor::getOutputPeakDb() const noexcept
+{
+    return dspEngine.getOutputPeakDb();
+}
+
+float VocalSuiteUltraProAudioProcessor::getOutputRmsDb() const noexcept
+{
+    return dspEngine.getOutputRmsDb();
+}
+
 juce::AudioProcessorEditor* VocalSuiteUltraProAudioProcessor::createEditor()
 {
     return new VocalSuiteUltraProAudioProcessorEditor(*this);
