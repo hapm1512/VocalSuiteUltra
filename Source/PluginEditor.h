@@ -15,7 +15,8 @@
 #include "CorrelationMeter.h"
 #include "SpectrumAnalyzer.h"
 
-class VocalSuiteUltraProAudioProcessorEditor final : public juce::AudioProcessorEditor
+class VocalSuiteUltraProAudioProcessorEditor final : public juce::AudioProcessorEditor,
+                                               private juce::Timer
 {
 public:
     explicit VocalSuiteUltraProAudioProcessorEditor(VocalSuiteUltraProAudioProcessor&);
@@ -25,6 +26,8 @@ public:
     void resized() override;
 
 private:
+    void timerCallback() override;
+
     VocalSuiteUltraProAudioProcessor& processor;
 
     HeaderBar headerBar;

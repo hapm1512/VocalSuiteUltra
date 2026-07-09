@@ -84,6 +84,31 @@ float VocalSuiteUltraProAudioProcessor::getOutputRmsDb() const noexcept
     return dspEngine.getOutputRmsDb();
 }
 
+float VocalSuiteUltraProAudioProcessor::getLufsMomentary() const noexcept
+{
+    return dspEngine.getLufsMomentary();
+}
+
+float VocalSuiteUltraProAudioProcessor::getLufsShortTerm() const noexcept
+{
+    return dspEngine.getLufsShortTerm();
+}
+
+float VocalSuiteUltraProAudioProcessor::getLufsIntegrated() const noexcept
+{
+    return dspEngine.getLufsIntegrated();
+}
+
+float VocalSuiteUltraProAudioProcessor::getStereoCorrelation() const noexcept
+{
+    return dspEngine.getStereoCorrelation();
+}
+
+float VocalSuiteUltraProAudioProcessor::getStereoWidth() const noexcept
+{
+    return dspEngine.getStereoWidth();
+}
+
 bool VocalSuiteUltraProAudioProcessor::copyAnalyzerBuffer(DspEngine::AnalyzerBuffer& destination) const noexcept
 {
     return dspEngine.copyAnalyzerBuffer(destination);

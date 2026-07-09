@@ -2,10 +2,9 @@
 
 VocalSuiteUltraProAudioProcessorEditor::VocalSuiteUltraProAudioProcessorEditor(
     VocalSuiteUltraProAudioProcessor& p)
-    : AudioProcessorEditor(&p), processor(p)
+    : AudioProcessorEditor(&p),
+      processor(p)
 {
-    juce::ignoreUnused(processor);
-
     configurePanels();
     addAllComponents();
 
@@ -17,6 +16,23 @@ VocalSuiteUltraProAudioProcessorEditor::VocalSuiteUltraProAudioProcessorEditor(
     setSize(1536, 864);
     setResizeLimits(1200, 720, 2200, 1400);
     setResizable(true, true);
+    startTimerHz(60);
+}
+
+void VocalSuiteUltraProAudioProcessorEditor::timerCallback()
+{
+    inputMeter.setLevel(processor.getInputPeak(), processor.getInputRms());
+    outputMeter.setLevel(processor.getOutputPeak(), processor.getOutputRms());
+    levelMeter.setLevel(processor.getTruePeak(), processor.getOutputRms());
+
+    lufsMeter.setLoudness(processor.getLufsMomentary(),
+                          processor.getLufsShortTerm(),
+                          processor.getLufsIntegrated());
+
+    correlationMeter.setCorrelation(processor.getStereoCorrelation(),
+                                    processor.getStereoWidth());
+
+    footerBar.repaint();
 }
 
 void VocalSuiteUltraProAudioProcessorEditor::configurePanels()

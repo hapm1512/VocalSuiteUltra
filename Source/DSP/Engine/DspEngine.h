@@ -29,6 +29,11 @@ public:
     float getTruePeakDb() const noexcept;
     float getOutputPeakDb() const noexcept;
     float getOutputRmsDb() const noexcept;
+    float getLufsMomentary() const noexcept;
+    float getLufsShortTerm() const noexcept;
+    float getLufsIntegrated() const noexcept;
+    float getStereoCorrelation() const noexcept;
+    float getStereoWidth() const noexcept;
 
     static constexpr int analyzerFifoSize = 4096;
     using AnalyzerBuffer = std::array<float, analyzerFifoSize>;
@@ -197,6 +202,11 @@ private:
     std::atomic<float> truePeakDb { -100.0f };
     std::atomic<float> outputPeakDb { -100.0f };
     std::atomic<float> outputRmsDb { -100.0f };
+    std::atomic<float> lufsMomentary { -70.0f };
+    std::atomic<float> lufsShortTerm { -70.0f };
+    std::atomic<float> lufsIntegrated { -70.0f };
+    std::atomic<float> stereoCorrelation { 1.0f };
+    std::atomic<float> stereoWidth { 0.0f };
 
     MeterEngine outputMeter;
 

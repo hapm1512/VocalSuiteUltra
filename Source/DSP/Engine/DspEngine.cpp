@@ -23,6 +23,11 @@ void DspEngine::reset()
     truePeakDb.store(-100.0f);
     outputPeakDb.store(-100.0f);
     outputRmsDb.store(-100.0f);
+    lufsMomentary.store(-70.0f);
+    lufsShortTerm.store(-70.0f);
+    lufsIntegrated.store(-70.0f);
+    stereoCorrelation.store(1.0f);
+    stereoWidth.store(0.0f);
     outputMeter.reset();
     analyzerFifo.fill(0.0f);
     analyzerWriteIndex.store(0);
@@ -71,6 +76,11 @@ float DspEngine::getTruePeak() const noexcept { return truePeak.load(); }
 float DspEngine::getTruePeakDb() const noexcept { return truePeakDb.load(); }
 float DspEngine::getOutputPeakDb() const noexcept { return outputPeakDb.load(); }
 float DspEngine::getOutputRmsDb() const noexcept { return outputRmsDb.load(); }
+float DspEngine::getLufsMomentary() const noexcept { return lufsMomentary.load(); }
+float DspEngine::getLufsShortTerm() const noexcept { return lufsShortTerm.load(); }
+float DspEngine::getLufsIntegrated() const noexcept { return lufsIntegrated.load(); }
+float DspEngine::getStereoCorrelation() const noexcept { return stereoCorrelation.load(); }
+float DspEngine::getStereoWidth() const noexcept { return stereoWidth.load(); }
 
 bool DspEngine::copyAnalyzerBuffer(DspEngine::AnalyzerBuffer& destination) const noexcept
 {
@@ -370,6 +380,45 @@ void DspEngine::updateOutputMeters(const juce::AudioBuffer<float>& buffer)
     truePeakDb.store(frame.truePeakDb);
     outputPeakDb.store(frame.peakDb);
     outputRmsDb.store(frame.rmsDb);
+
+    // Lightweight loudness approximation for real-time UI metering.
+    // This is intentionally allocation-free and safe for the audio thread.
+    const float momentary = juce::jlimit(-70.0f, 6.0f, frame.rmsDb - 3.0f);
+    const float shortTerm = lufsShortTerm.load() * 0.985f + momentary * 0.015f;
+    const float integrated = lufsIntegrated.load() * 0.998f + momentary * 0.002f;
+
+    lufsMomentary.store(momentary);
+    lufsShortTerm.store(juce::jlimit(-70.0f, 6.0f, shortTerm));
+    lufsIntegrated.store(juce::jlimit(-70.0f, 6.0f, integrated));
+
+    float correlation = 1.0f;
+
+    if (buffer.getNumChannels() >= 2 && buffer.getNumSamples() > 0)
+    {
+        const auto* left = buffer.getReadPointer(0);
+        const auto* right = buffer.getReadPointer(1);
+
+        double cross = 0.0;
+        double leftEnergy = 0.0;
+        double rightEnergy = 0.0;
+
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            const double l = static_cast<double>(left[i]);
+            const double r = static_cast<double>(right[i]);
+            cross += l * r;
+            leftEnergy += l * l;
+            rightEnergy += r * r;
+        }
+
+        const double denom = std::sqrt(leftEnergy * rightEnergy);
+        if (denom > 1.0e-12)
+            correlation = static_cast<float>(cross / denom);
+    }
+
+    correlation = juce::jlimit(-1.0f, 1.0f, correlation);
+    stereoCorrelation.store(correlation);
+    stereoWidth.store(juce::jlimit(0.0f, 200.0f, (1.0f - correlation) * 100.0f));
 }
 
 void DspEngine::applyInputGain(juce::AudioBuffer<float>& buffer,

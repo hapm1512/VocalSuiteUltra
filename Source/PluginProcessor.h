@@ -29,6 +29,11 @@ public:
     float getTruePeakDb() const noexcept;
     float getOutputPeakDb() const noexcept;
     float getOutputRmsDb() const noexcept;
+    float getLufsMomentary() const noexcept;
+    float getLufsShortTerm() const noexcept;
+    float getLufsIntegrated() const noexcept;
+    float getStereoCorrelation() const noexcept;
+    float getStereoWidth() const noexcept;
     bool copyAnalyzerBuffer(DspEngine::AnalyzerBuffer& destination) const noexcept;
 
     juce::AudioProcessorEditor* createEditor() override;
