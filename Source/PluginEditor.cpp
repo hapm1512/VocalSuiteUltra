@@ -63,8 +63,8 @@ void VocalSuiteUltraProAudioProcessorEditor::configurePanels()
                          makeIds({ "NOISE_REDUCE", "NOISE_DETAIL" }),
                          "NOISE_ON", juce::Colour(0xff54d941), "AI ADAPTIVE");
 
-    preampPanel.configure(state, "PREAMP", makeNames({ "DRIVE", "OUTPUT" }),
-                          makeIds({ "PREAMP_DRIVE", "PREAMP_OUTPUT" }),
+    preampPanel.configure(state, "PREAMP", makeNames({ "DRIVE", "BIAS", "COLOR", "OUTPUT" }),
+                          makeIds({ "PREAMP_DRIVE", "PREAMP_BIAS", "PREAMP_COLOR", "PREAMP_OUTPUT" }),
                           "PREAMP_ON", juce::Colour(0xffffa326), "MODE: TUBE");
 
     gatePanel.configure(state, "GATE", makeNames({ "THRESH", "RANGE", "ATTACK", "RELEASE" }),

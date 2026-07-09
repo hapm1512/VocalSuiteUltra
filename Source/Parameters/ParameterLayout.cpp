@@ -56,6 +56,9 @@ namespace Parameters
         addBool(params, "PREAMP_SAFE", "Preamp Safe Mode", true);
         addFloat(params, "PREAMP_HEADROOM", "Preamp Headroom", 0.0f, 18.0f, 12.0f);
         addFloat(params, "PREAMP_CEILING", "Preamp Ceiling", -12.0f, -0.3f, -1.0f);
+        addFloat(params, "PREAMP_HARMONICS", "Preamp Harmonics", 0.0f, 100.0f, 45.0f);
+        addFloat(params, "PREAMP_TRANSFORMER", "Preamp Transformer", 0.0f, 100.0f, 35.0f);
+        addFloat(params, "PREAMP_COLOR", "Preamp Color", 0.0f, 100.0f, 50.0f);
 
         addBool(params, "GATE_ON", "Gate", true);
         addFloat(params, "GATE_THRESH", "Gate Threshold", -80.0f, 0.0f, -45.0f);

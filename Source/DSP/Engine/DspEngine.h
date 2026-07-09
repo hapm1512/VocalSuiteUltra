@@ -89,6 +89,7 @@ private:
         float transformerLowState = 0.0f;
         float saturationMemory = 0.0f;
         float preampDcState = 0.0f;
+        float preampTransformerState = 0.0f;
         float preampOutputSmooth = 1.0f;
 
         BiquadState hpf1;

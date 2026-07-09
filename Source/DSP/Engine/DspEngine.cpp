@@ -684,30 +684,37 @@ void DspEngine::applyPreamp(juce::AudioBuffer<float>& buffer,
     const float ceilingDb = getFloatParam(apvts, "PREAMP_CEILING", -1.0f);
     const int mode = getChoiceParam(apvts, "PREAMP_MODE", 0);
 
+    const float harmonicAmount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "PREAMP_HARMONICS", 45.0f) / 100.0f);
+    const float transformerAmount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "PREAMP_TRANSFORMER", 35.0f) / 100.0f);
+    const float colourAmount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "PREAMP_COLOR", 50.0f) / 100.0f);
+
     const float modeDriveScale = [mode]() noexcept
     {
         switch (mode)
         {
-            case 1: return 4.25f; // Metal
-            case 2: return 1.20f; // Nature
-            case 3: return 2.65f; // Vintage / tape
-            case 4: return 1.05f; // Clean
-            default: return 3.10f; // Tube
+            case 1: return 4.55f; // Metal / pentode emphasis.
+            case 2: return 1.18f; // Nature.
+            case 3: return 2.80f; // Vintage / tape-like.
+            case 4: return 1.04f; // Clean.
+            default: return 3.20f; // Tube / triode.
         }
     }();
 
-    const float drive = 1.0f + driveAmount * modeDriveScale;
+    const float driveCurve = std::pow(driveAmount, 1.18f);
+    const float drive = 1.0f + driveCurve * modeDriveScale;
     const float bias = juce::jmap(biasAmount, -0.18f, 0.18f);
 
-    // Commercial safety chain:
-    // headroom before non-linear stages -> colour -> auto trim -> DC block -> ceiling clip.
+    // Safety chain:
+    // input headroom -> analog character -> auto trim -> DC block -> soft ceiling.
     const float headroomGain = juce::Decibels::decibelsToGain(-juce::jlimit(0.0f, 18.0f, headroomDb));
     const float outputGain = juce::Decibels::decibelsToGain(juce::jlimit(-18.0f, 12.0f, requestedOutputDb));
-    const float autoTrim = juce::Decibels::decibelsToGain(-(driveAmount * (safeMode ? 7.5f : 5.0f)));
+    const float autoTrimDb = -(driveCurve * (safeMode ? 8.5f : 5.8f)) - (harmonicAmount * colourAmount * 1.5f);
+    const float autoTrim = juce::Decibels::decibelsToGain(autoTrimDb);
     const float targetMakeup = outputGain * autoTrim / juce::jmax(0.25f, headroomGain * (safeMode ? 1.0f : 0.80f));
     const float ceiling = juce::Decibels::decibelsToGain(juce::jlimit(-12.0f, -0.3f, ceilingDb));
     const float dcCoefficient = makeOnePoleCoefficient(18.0f, sampleRate);
     const float smoothCoefficient = makeCoefficient(18.0f, sampleRate);
+    const float transformerCoefficient = makeOnePoleCoefficient(155.0f, sampleRate);
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
@@ -718,32 +725,39 @@ void DspEngine::applyPreamp(juce::AudioBuffer<float>& buffer,
         {
             const float dry = data[i];
             const float protectedInput = juce::jlimit(-2.0f, 2.0f, dry * headroomGain);
-            float wet = protectedInput;
+
+            const float transformerLow = onePoleLowPass(protectedInput, transformerCoefficient, state.preampTransformerState);
+            const float transformerInput = protectedInput + transformerLow * (0.16f * transformerAmount);
+
+            const float triode = tubeShape(protectedInput, drive, bias);
+            const float pentode = 0.62f * softClip(protectedInput, drive * 1.55f)
+                                + 0.26f * softClip(protectedInput * 1.90f, drive * 0.88f)
+                                + 0.12f * protectedInput;
+            const float vintage = tapeShape(transformerInput, drive * 0.92f);
+            const float clean = 0.94f * protectedInput + 0.06f * softClip(protectedInput, drive * 0.65f);
+            const float transformer = transformerShape(transformerInput, drive * 0.72f, transformerAmount);
+
+            float wet = triode;
 
             switch (mode)
             {
-                case 1: // Metal: stronger odd harmonics, still protected.
-                    wet = 0.68f * softClip(protectedInput, drive * 1.45f)
-                        + 0.24f * softClip(protectedInput * 1.85f, drive * 0.82f)
-                        + 0.08f * protectedInput;
-                    break;
-
-                case 2: // Nature: light colour, mostly transparent.
-                    wet = 0.88f * protectedInput + 0.12f * asymSoftClip(protectedInput, drive * 0.75f, bias * 0.22f);
-                    break;
-
-                case 3: // Vintage: tape-like compression.
-                    wet = tapeShape(protectedInput, drive * 0.92f);
-                    break;
-
-                case 4: // Clean: very small density without obvious distortion.
-                    wet = 0.94f * protectedInput + 0.06f * softClip(protectedInput, drive * 0.65f);
-                    break;
-
-                default: // Tube: asymmetric, even harmonic biased.
-                    wet = tubeShape(protectedInput, drive, bias);
-                    break;
+                case 1: wet = pentode; break;
+                case 2: wet = 0.90f * protectedInput + 0.10f * asymSoftClip(protectedInput, drive * 0.72f, bias * 0.18f); break;
+                case 3: wet = vintage; break;
+                case 4: wet = clean; break;
+                default: wet = triode; break;
             }
+
+            const float secondHarm = asymSoftClip(protectedInput, drive * 0.68f, bias * 0.55f)
+                                   - softClip(protectedInput, drive * 0.62f);
+            const float thirdHarm = softClip(protectedInput * 1.55f, drive * 0.54f) - protectedInput * 0.72f;
+            const float fifthHarm = softClip(protectedInput * 2.15f, drive * 0.36f) * 0.35f - protectedInput * 0.12f;
+            const float harmonicBlend = (secondHarm * 0.48f + thirdHarm * 0.34f + fifthHarm * 0.18f)
+                                      * harmonicAmount * colourAmount;
+
+            wet = wet * (1.0f - transformerAmount * 0.22f)
+                + transformer * (transformerAmount * 0.22f)
+                + harmonicBlend * 0.28f;
 
             wet = dry * (1.0f - mix) + wet * mix;
 
@@ -756,8 +770,6 @@ void DspEngine::applyPreamp(juce::AudioBuffer<float>& buffer,
             state.preampDcState = dcCoefficient * state.preampDcState + (1.0f - dcCoefficient) * wet;
             wet -= state.preampDcState;
 
-            // Last preamp safety stage. This is intentionally before the final limiter,
-            // so high Drive/Output cannot explode the next stages.
             if (safeMode)
             {
                 const float normalised = wet / juce::jmax(0.0001f, ceiling);
