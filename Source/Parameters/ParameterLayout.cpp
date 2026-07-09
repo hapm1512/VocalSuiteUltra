@@ -182,6 +182,12 @@ namespace Parameters
         addFloat(params, "WIDTH_AMOUNT", "Width Amount", 0.0f, 200.0f, 100.0f);
 
         addBool(params, "LIMITER_ON", "Limiter", true);
+        addFloat(params, "LIMITER_DRIVE", "Limiter Drive", -6.0f, 12.0f, 0.0f);
+        addFloat(params, "LIMITER_CEILING", "Limiter Ceiling", -12.0f, -0.1f, -1.0f);
+        addFloat(params, "LIMITER_LOOKAHEAD", "Limiter Lookahead", 0.0f, 5.0f, 1.5f);
+        addFloat(params, "LIMITER_RELEASE", "Limiter Release", 5.0f, 500.0f, 75.0f);
+        addFloat(params, "LIMITER_SOFTCLIP", "Limiter Soft Clip", 0.0f, 100.0f, 35.0f);
+        addBool(params, "LIMITER_ISP", "Limiter ISP Protection", true);
 
         return { params.begin(), params.end() };
     }

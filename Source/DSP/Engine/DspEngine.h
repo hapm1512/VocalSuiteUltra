@@ -90,6 +90,16 @@ private:
         float tapeHighState = 0.0f;
         float transformerLowState = 0.0f;
         float saturationMemory = 0.0f;
+
+        static constexpr int limiterDelaySize = 4096;
+        std::array<float, limiterDelaySize> limiterDelay {};
+        int limiterDelayWrite = 0;
+        float limiterGain = 1.0f;
+        float limiterReleaseState = 1.0f;
+        float limiterPrevInput = 0.0f;
+        float limiterDcState = 0.0f;
+        float limiterSoftClipMemory = 0.0f;
+
         float preampDcState = 0.0f;
         float preampTransformerState = 0.0f;
         float preampOutputSmooth = 1.0f;
@@ -164,6 +174,8 @@ private:
     static float tapeShape(float sample, float drive) noexcept;
     static float tubeShape(float sample, float drive, float bias) noexcept;
     static float transformerShape(float sample, float drive, float lowWeight) noexcept;
+    static float softCeiling(float sample, float ceiling, float softness) noexcept;
+    static float detectTruePeakProxy(float current, float previous) noexcept;
     static float onePoleLowPass(float input, float coefficient, float& state) noexcept;
     static float onePoleHighPassFromLowPass(float input, float coefficient, float& state) noexcept;
     static float makeOnePoleCoefficient(float frequency, double sr) noexcept;

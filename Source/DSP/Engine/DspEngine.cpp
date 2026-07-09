@@ -182,6 +182,29 @@ float DspEngine::transformerShape(float sample, float drive, float lowWeight) no
     return juce::jlimit(-1.2f, 1.2f, shaped * (1.0f + lowEmphasis * 0.08f));
 }
 
+float DspEngine::softCeiling(float sample, float ceiling, float softness) noexcept
+{
+    const float safeCeiling = juce::jlimit(0.05f, 1.0f, ceiling);
+    const float safeSoftness = juce::jlimit(0.0f, 1.0f, softness);
+
+    if (std::abs(sample) <= safeCeiling)
+        return sample;
+
+    const float sign = sample < 0.0f ? -1.0f : 1.0f;
+    const float over = std::abs(sample) - safeCeiling;
+    const float knee = 0.025f + safeSoftness * 0.35f;
+    const float rounded = safeCeiling + knee * std::tanh(over / knee);
+    return sign * juce::jmin(1.0f, rounded);
+}
+
+float DspEngine::detectTruePeakProxy(float current, float previous) noexcept
+{
+    const float mid = 0.5f * (current + previous);
+    const float quarterA = previous * 0.75f + current * 0.25f;
+    const float quarterB = previous * 0.25f + current * 0.75f;
+    return juce::jmax(std::abs(current), std::abs(mid), std::abs(quarterA), std::abs(quarterB));
+}
+
 float DspEngine::makeOnePoleCoefficient(float frequency, double sr) noexcept
 {
     const float safeFrequency = juce::jlimit(20.0f, 22000.0f, frequency);
@@ -1154,23 +1177,78 @@ void DspEngine::applyLimiterAndOutput(juce::AudioBuffer<float>& buffer,
                                       juce::AudioProcessorValueTreeState& apvts)
 {
     const bool limiterOn = getBoolParam(apvts, "LIMITER_ON", true);
+    const bool ispOn = getBoolParam(apvts, "LIMITER_ISP", true);
     const float outputGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "OUTPUT_GAIN", 0.0f));
-    constexpr float ceiling = 0.96f;
+    const float driveGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "LIMITER_DRIVE", 0.0f));
+    const float ceilingDb = juce::jlimit(-12.0f, -0.1f, getFloatParam(apvts, "LIMITER_CEILING", -1.0f));
+    const float ceiling = juce::Decibels::decibelsToGain(ceilingDb);
+    const float releaseMs = juce::jlimit(5.0f, 500.0f, getFloatParam(apvts, "LIMITER_RELEASE", 75.0f));
+    const float lookaheadMs = juce::jlimit(0.0f, 5.0f, getFloatParam(apvts, "LIMITER_LOOKAHEAD", 1.5f));
+    const float softClipAmount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "LIMITER_SOFTCLIP", 35.0f) / 100.0f);
+
+    const int maxDelay = ChannelState::limiterDelaySize - 1;
+    const int lookaheadSamples = juce::jlimit(0, maxDelay, static_cast<int>(sampleRate * lookaheadMs * 0.001));
+    const float releaseCoeff = makeCoefficient(releaseMs, sampleRate);
+    const float attackCoeff = makeCoefficient(0.05f, sampleRate);
+    float maxLimiterReduction = gainReductionDb.load();
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
         auto* data = buffer.getWritePointer(ch);
+        auto& state = channelStates[static_cast<size_t>(ch)];
 
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
-            float sample = data[i] * outputGain;
+            const float input = data[i] * outputGain * driveGain;
+            state.limiterDelay[static_cast<size_t>(state.limiterDelayWrite)] = input;
+
+            int readIndex = state.limiterDelayWrite - lookaheadSamples;
+            if (readIndex < 0)
+                readIndex += ChannelState::limiterDelaySize;
+
+            state.limiterDelayWrite = (state.limiterDelayWrite + 1) & (ChannelState::limiterDelaySize - 1);
+
+            float delayed = lookaheadSamples > 0
+                ? state.limiterDelay[static_cast<size_t>(readIndex)]
+                : input;
+
+            state.limiterDcState = state.limiterDcState * 0.995f + delayed * 0.005f;
+            delayed -= state.limiterDcState;
+
+            float detectorPeak = std::abs(input);
+            if (ispOn)
+                detectorPeak = juce::jmax(detectorPeak, detectTruePeakProxy(input, state.limiterPrevInput));
+            state.limiterPrevInput = input;
+
+            float targetGain = 1.0f;
+            if (limiterOn && detectorPeak > ceiling && detectorPeak > 1.0e-6f)
+                targetGain = ceiling / detectorPeak;
+
+            const float coef = targetGain < state.limiterGain ? attackCoeff : releaseCoeff;
+            state.limiterGain = coef * state.limiterGain + (1.0f - coef) * targetGain;
+            state.limiterGain = juce::jlimit(0.02f, 1.0f, state.limiterGain);
+
+            float sample = delayed * state.limiterGain;
+
+            if (limiterOn && softClipAmount > 0.001f)
+            {
+                const float clipCeiling = ceiling * (1.0f + softClipAmount * 0.18f);
+                sample = softCeiling(sample, clipCeiling, softClipAmount);
+            }
 
             if (limiterOn)
                 sample = juce::jlimit(-ceiling, ceiling, sample);
 
+            if (! std::isfinite(sample))
+                sample = 0.0f;
+
+            const float reductionDb = -juce::Decibels::gainToDecibels(state.limiterGain, -80.0f);
+            maxLimiterReduction = juce::jmax(maxLimiterReduction, reductionDb);
             data[i] = sample;
         }
     }
+
+    gainReductionDb.store(maxLimiterReduction);
 }
 
 void DspEngine::sanitize(juce::AudioBuffer<float>& buffer) noexcept
