@@ -4,6 +4,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "Parameters/ParameterLayout.h"
+#include "DSP/Engine/DspEngine.h"
 
 class VocalSuiteUltraProAudioProcessor final : public juce::AudioProcessor
 {
@@ -40,6 +41,8 @@ public:
     juce::AudioProcessorValueTreeState apvts;
 
 private:
+    DspEngine dspEngine;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VocalSuiteUltraProAudioProcessor)
 };
 

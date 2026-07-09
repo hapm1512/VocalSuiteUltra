@@ -35,6 +35,9 @@ target_sources(VocalSuiteUltraPro
         Source/Parameters/ParameterLayout.h
         Source/Parameters/ParameterLayout.cpp
 
+        Source/DSP/Engine/DspEngine.h
+        Source/DSP/Engine/DspEngine.cpp
+
         Source/GUI/Components/GlassPanel.h
         Source/GUI/Components/GlassPanel.cpp
         Source/GUI/Components/HeaderBar.h
@@ -69,6 +72,7 @@ target_include_directories(VocalSuiteUltraPro
     PRIVATE
         Source
         Source/Parameters
+        Source/DSP/Engine
         Source/GUI/Components
         Source/GUI/Panels
         Source/GUI/Buttons

@@ -11,11 +11,12 @@ VocalSuiteUltraProAudioProcessor::VocalSuiteUltraProAudioProcessor()
 
 void VocalSuiteUltraProAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
-    juce::ignoreUnused(sampleRate, samplesPerBlock);
+    dspEngine.prepare(sampleRate, samplesPerBlock, getTotalNumOutputChannels());
 }
 
 void VocalSuiteUltraProAudioProcessor::releaseResources()
 {
+    dspEngine.reset();
 }
 
 bool VocalSuiteUltraProAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
@@ -28,13 +29,13 @@ void VocalSuiteUltraProAudioProcessor::processBlock(juce::AudioBuffer<float>& bu
                                                     juce::MidiBuffer& midiMessages)
 {
     juce::ignoreUnused(midiMessages);
+
     juce::ScopedNoDenormals noDenormals;
 
-    const float inputGainDb = apvts.getRawParameterValue("INPUT_GAIN")->load();
-    const float outputGainDb = apvts.getRawParameterValue("OUTPUT_GAIN")->load();
-    const float gain = juce::Decibels::decibelsToGain(inputGainDb + outputGainDb);
+    for (auto ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
+        buffer.clear(ch, 0, buffer.getNumSamples());
 
-    buffer.applyGain(gain);
+    dspEngine.process(buffer, apvts);
 }
 
 juce::AudioProcessorEditor* VocalSuiteUltraProAudioProcessor::createEditor()
