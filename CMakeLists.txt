@@ -37,8 +37,15 @@ target_sources(VocalSuiteUltraPro
 
         Source/GUI/Components/GlassPanel.h
         Source/GUI/Components/GlassPanel.cpp
+
         Source/GUI/Buttons/LedButton.h
         Source/GUI/Buttons/LedButton.cpp
+
+        Source/GUI/Knobs/ProKnob.h
+        Source/GUI/Knobs/ProKnob.cpp
+
+        Source/GUI/LookAndFeel/ProLookAndFeel.h
+        Source/GUI/LookAndFeel/ProLookAndFeel.cpp
 )
 
 target_include_directories(VocalSuiteUltraPro
@@ -47,6 +54,8 @@ target_include_directories(VocalSuiteUltraPro
         Source/Parameters
         Source/GUI/Components
         Source/GUI/Buttons
+        Source/GUI/Knobs
+        Source/GUI/LookAndFeel
 )
 
 target_compile_definitions(VocalSuiteUltraPro
