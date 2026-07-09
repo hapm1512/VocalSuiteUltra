@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+﻿cmake_minimum_required(VERSION 3.22)
 
 project(VocalSuiteUltraPro VERSION 1.0.0)
 
@@ -7,10 +7,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(JUCE_DIR "D:/JUCE8" CACHE PATH "Path to JUCE 8")
-
-if(NOT EXISTS "${JUCE_DIR}/CMakeLists.txt")
-    message(FATAL_ERROR "JUCE not found: ${JUCE_DIR}")
-endif()
 
 add_subdirectory(${JUCE_DIR} JUCE)
 
@@ -35,14 +31,22 @@ target_sources(VocalSuiteUltraPro
         Source/PluginProcessor.cpp
         Source/PluginEditor.h
         Source/PluginEditor.cpp
+
         Source/Parameters/ParameterLayout.h
         Source/Parameters/ParameterLayout.cpp
+
+        Source/GUI/Components/GlassPanel.h
+        Source/GUI/Components/GlassPanel.cpp
+        Source/GUI/Buttons/LedButton.h
+        Source/GUI/Buttons/LedButton.cpp
 )
 
 target_include_directories(VocalSuiteUltraPro
     PRIVATE
         Source
         Source/Parameters
+        Source/GUI/Components
+        Source/GUI/Buttons
 )
 
 target_compile_definitions(VocalSuiteUltraPro
@@ -67,5 +71,5 @@ target_link_libraries(VocalSuiteUltraPro
 )
 
 if(MSVC)
-    target_compile_options(VocalSuiteUltraPro PRIVATE /W4 /permissive- /Zc:__cplusplus)
+    target_compile_options(VocalSuiteUltraPro PRIVATE /W4 /permissive- /Zc:__cplusplus /utf-8)
 endif()
