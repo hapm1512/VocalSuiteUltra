@@ -1,4 +1,4 @@
-﻿#include "ProKnob.h"
+#include "ProKnob.h"
 
 ProKnob::ProKnob()
 {
@@ -22,7 +22,7 @@ void ProKnob::paint(juce::Graphics& g)
 
     const float start = juce::MathConstants<float>::pi * 1.25f;
     const float end   = juce::MathConstants<float>::pi * 2.75f;
-    const float pos   = (float) valueToProportionOfLength(getValue());
+    const float pos   = static_cast<float>(valueToProportionOfLength(getValue()));
     const float angle = start + pos * (end - start);
 
     g.setColour(juce::Colour(0x66000000));
@@ -79,7 +79,7 @@ void ProKnob::paint(juce::Graphics& g)
 
     for (int i = 0; i < 44; ++i)
     {
-        const float p = (float)i / 43.0f;
+        const float p = static_cast<float>(i) / 43.0f;
         const float a = start + p * (end - start);
 
         const auto p1 = centre.getPointOnCircumference(radius - 1.0f, a);

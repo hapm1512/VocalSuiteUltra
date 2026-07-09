@@ -1,4 +1,4 @@
-﻿#include "LufsMeter.h"
+#include "LufsMeter.h"
 
 void LufsMeter::paint(juce::Graphics& g)
 {

@@ -1,4 +1,4 @@
-﻿#include "ParameterLayout.h"
+#include "ParameterLayout.h"
 
 namespace Parameters
 {

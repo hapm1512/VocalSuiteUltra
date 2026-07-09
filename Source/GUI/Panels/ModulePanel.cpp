@@ -51,7 +51,7 @@ void ModulePanel::paint(juce::Graphics& g)
 
     auto header = getLocalBounds().withHeight(42).reduced(14, 0);
     g.setColour(accent);
-    g.fillEllipse((float)header.getX(), (float)header.getCentreY() - 7.0f, 14.0f, 14.0f);
+    g.fillEllipse(static_cast<float>(header.getX()), static_cast<float>(header.getCentreY()) - 7.0f, 14.0f, 14.0f);
 
     g.setColour(juce::Colour(0xffdce8ff));
     g.setFont(juce::FontOptions(13.5f, juce::Font::bold));
@@ -118,14 +118,14 @@ void ModulePanel::drawMiniDisplay(juce::Graphics& g, juce::Rectangle<int> area)
     g.setColour(accent.withAlpha(0.24f));
     for (int i = 0; i < 6; ++i)
     {
-        const float x = r.getX() + r.getWidth() * (float)i / 5.0f;
-        g.drawVerticalLine((int)std::round(x), r.getY(), r.getBottom());
+        const float x = r.getX() + r.getWidth() * static_cast<float>(i) / 5.0f;
+        g.drawVerticalLine(juce::roundToInt(x), r.getY(), r.getBottom());
     }
 
     juce::Path curve;
     for (int i = 0; i < 64; ++i)
     {
-        const float p = (float)i / 63.0f;
+        const float p = static_cast<float>(i) / 63.0f;
         const float x = r.getX() + r.getWidth() * p;
         const float y = r.getCentreY() + std::sin(p * juce::MathConstants<float>::twoPi * 1.5f) * r.getHeight() * 0.18f
                                    - std::exp(-std::abs(p - 0.55f) * 11.0f) * r.getHeight() * 0.25f;

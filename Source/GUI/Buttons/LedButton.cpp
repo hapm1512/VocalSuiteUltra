@@ -1,4 +1,4 @@
-﻿#include "LedButton.h"
+#include "LedButton.h"
 
 LedButton::LedButton(const juce::String& text)
     : juce::Button(text)

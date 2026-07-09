@@ -1,4 +1,4 @@
-﻿#include "SpectrumAnalyzer.h"
+#include "SpectrumAnalyzer.h"
 
 SpectrumAnalyzer::SpectrumAnalyzer()
 {
@@ -13,43 +13,43 @@ void SpectrumAnalyzer::timerCallback()
 
 void SpectrumAnalyzer::paint(juce::Graphics& g)
 {
-    auto r = getLocalBounds().toFloat().reduced(6.0f);
+    const auto bounds = getLocalBounds().toFloat().reduced(6.0f);
 
     g.setColour(juce::Colour(0xff070a10));
-    g.fillRoundedRectangle(r, 8.0f);
+    g.fillRoundedRectangle(bounds, 8.0f);
 
     g.setColour(juce::Colour(0xff263044));
-    g.drawRoundedRectangle(r, 8.0f, 1.0f);
+    g.drawRoundedRectangle(bounds, 8.0f, 1.0f);
 
-    auto graph = r.reduced(16.0f, 18.0f);
+    const auto graph = bounds.reduced(16.0f, 18.0f);
 
     g.setColour(juce::Colour(0x331f8cff));
 
     for (int i = 0; i < 10; ++i)
     {
-        const float x = graph.getX() + graph.getWidth() * (float)i / 9.0f;
-        g.drawVerticalLine((int)x, graph.getY(), graph.getBottom());
+        const auto x = juce::roundToInt(graph.getX() + graph.getWidth() * static_cast<float>(i) / 9.0f);
+        g.drawVerticalLine(x, graph.getY(), graph.getBottom());
     }
 
     for (int i = 0; i < 6; ++i)
     {
-        const float y = graph.getY() + graph.getHeight() * (float)i / 5.0f;
-        g.drawHorizontalLine((int)y, graph.getX(), graph.getRight());
+        const auto y = juce::roundToInt(graph.getY() + graph.getHeight() * static_cast<float>(i) / 5.0f);
+        g.drawHorizontalLine(y, graph.getX(), graph.getRight());
     }
 
     spectrumPath.clear();
 
     for (int i = 0; i < 160; ++i)
     {
-        const float p = (float)i / 159.0f;
-        const float x = graph.getX() + graph.getWidth() * p;
+        const auto proportion = static_cast<float>(i) / 159.0f;
+        const auto x = graph.getX() + graph.getWidth() * proportion;
 
-        const float bass = std::exp(-p * 2.2f);
-        const float wave = 0.08f * std::sin(phase + p * 42.0f)
-                         + 0.05f * std::sin(phase * 1.7f + p * 91.0f);
+        const auto bass = std::exp(-proportion * 2.2f);
+        const auto wave = 0.08f * std::sin(phase + proportion * 42.0f)
+                        + 0.05f * std::sin(phase * 1.7f + proportion * 91.0f);
 
-        const float amp = juce::jlimit(0.05f, 0.95f, bass * 0.72f + wave + 0.18f);
-        const float y = graph.getBottom() - graph.getHeight() * amp;
+        const auto amp = juce::jlimit(0.05f, 0.95f, bass * 0.72f + wave + 0.18f);
+        const auto y = graph.getBottom() - graph.getHeight() * amp;
 
         if (i == 0)
             spectrumPath.startNewSubPath(x, y);
@@ -71,8 +71,8 @@ void SpectrumAnalyzer::paint(juce::Graphics& g)
     g.setColour(juce::Colour(0xff8e9ab0));
     g.setFont(juce::FontOptions(10.0f));
 
-    const int labelY = juce::roundToInt(graph.getBottom() + 2.0f);
-    auto drawLabel = [&](const juce::String& text, float x, juce::Justification justification)
+    const auto labelY = juce::roundToInt(graph.getBottom() + 2.0f);
+    auto drawLabel = [&g, labelY] (const juce::String& text, float x, juce::Justification justification)
     {
         g.drawText(text, juce::roundToInt(x), labelY, 40, 14, justification);
     };

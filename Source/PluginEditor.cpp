@@ -131,10 +131,10 @@ void VocalSuiteUltraProAudioProcessorEditor::drawBackground(juce::Graphics& g)
 
     g.setColour(juce::Colour(0x141f8cff));
     for (int i = 0; i < getWidth(); i += 64)
-        g.drawVerticalLine(i, 0.0f, (float)getHeight());
+        g.drawVerticalLine(i, 0.0f, static_cast<float>(getHeight()));
 
     for (int y = 0; y < getHeight(); y += 64)
-        g.drawHorizontalLine(y, 0.0f, (float)getWidth());
+        g.drawHorizontalLine(y, 0.0f, static_cast<float>(getWidth()));
 
     g.setColour(juce::Colour(0x2200ccff));
     g.drawRect(getLocalBounds(), 1);

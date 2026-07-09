@@ -1,4 +1,4 @@
-﻿# VocalSuiteUltraPro
+# VocalSuiteUltraPro
 
 JUCE 8 Vocal Processing Plugin.
 

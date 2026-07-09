@@ -1,4 +1,4 @@
-﻿#include "GlassPanel.h"
+#include "GlassPanel.h"
 
 GlassPanel::GlassPanel(const juce::String& titleText)
     : title(titleText)

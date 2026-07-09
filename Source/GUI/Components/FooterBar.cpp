@@ -18,7 +18,7 @@ void FooterBar::paint(juce::Graphics& g)
                text.removeFromLeft(540), juce::Justification::centredLeft);
 
     g.setColour(juce::Colour(0xff43ff88));
-    g.fillEllipse((float)text.getRight() - 18.0f, (float)text.getCentreY() - 4.0f, 8.0f, 8.0f);
+    g.fillEllipse(static_cast<float>(text.getRight()) - 18.0f, static_cast<float>(text.getCentreY()) - 4.0f, 8.0f, 8.0f);
 
     g.setColour(juce::Colour(0xff7f8ca6));
     g.drawText("CPU: 0.0%     COPYRIGHT HAI PHAM", text, juce::Justification::centredRight);

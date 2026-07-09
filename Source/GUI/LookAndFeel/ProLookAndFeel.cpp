@@ -1,4 +1,4 @@
-﻿#include "ProLookAndFeel.h"
+#include "ProLookAndFeel.h"
 
 ProLookAndFeel::ProLookAndFeel()
 {

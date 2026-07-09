@@ -1,4 +1,4 @@
-﻿#include "CorrelationMeter.h"
+#include "CorrelationMeter.h"
 
 void CorrelationMeter::paint(juce::Graphics& g)
 {
