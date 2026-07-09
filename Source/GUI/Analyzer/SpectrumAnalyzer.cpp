@@ -70,9 +70,16 @@ void SpectrumAnalyzer::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour(0xff8e9ab0));
     g.setFont(juce::FontOptions(10.0f));
-    g.drawText("20", graph.getX(), graph.getBottom() + 2, 40, 14, juce::Justification::left);
-    g.drawText("100", graph.getX() + graph.getWidth() * 0.18f, graph.getBottom() + 2, 40, 14, juce::Justification::centred);
-    g.drawText("1k", graph.getX() + graph.getWidth() * 0.48f, graph.getBottom() + 2, 40, 14, juce::Justification::centred);
-    g.drawText("10k", graph.getX() + graph.getWidth() * 0.78f, graph.getBottom() + 2, 40, 14, juce::Justification::centred);
-    g.drawText("20k", graph.getRight() - 40, graph.getBottom() + 2, 40, 14, juce::Justification::right);
+
+    const int labelY = juce::roundToInt(graph.getBottom() + 2.0f);
+    auto drawLabel = [&](const juce::String& text, float x, juce::Justification justification)
+    {
+        g.drawText(text, juce::roundToInt(x), labelY, 40, 14, justification);
+    };
+
+    drawLabel("20", graph.getX(), juce::Justification::left);
+    drawLabel("100", graph.getX() + graph.getWidth() * 0.18f, juce::Justification::centred);
+    drawLabel("1k", graph.getX() + graph.getWidth() * 0.48f, juce::Justification::centred);
+    drawLabel("10k", graph.getX() + graph.getWidth() * 0.78f, juce::Justification::centred);
+    drawLabel("20k", graph.getRight() - 40.0f, juce::Justification::right);
 }

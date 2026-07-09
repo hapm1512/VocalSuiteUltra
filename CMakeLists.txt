@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.22)
 
 project(VocalSuiteUltraPro VERSION 1.0.0)
 
@@ -37,6 +37,13 @@ target_sources(VocalSuiteUltraPro
 
         Source/GUI/Components/GlassPanel.h
         Source/GUI/Components/GlassPanel.cpp
+        Source/GUI/Components/HeaderBar.h
+        Source/GUI/Components/HeaderBar.cpp
+        Source/GUI/Components/FooterBar.h
+        Source/GUI/Components/FooterBar.cpp
+
+        Source/GUI/Panels/ModulePanel.h
+        Source/GUI/Panels/ModulePanel.cpp
 
         Source/GUI/Buttons/LedButton.h
         Source/GUI/Buttons/LedButton.cpp
@@ -63,6 +70,7 @@ target_include_directories(VocalSuiteUltraPro
         Source
         Source/Parameters
         Source/GUI/Components
+        Source/GUI/Panels
         Source/GUI/Buttons
         Source/GUI/Knobs
         Source/GUI/LookAndFeel
