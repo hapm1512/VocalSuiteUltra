@@ -109,11 +109,6 @@ float VocalSuiteUltraProAudioProcessor::getStereoWidth() const noexcept
     return dspEngine.getStereoWidth();
 }
 
-DspEngine::MeterSnapshot VocalSuiteUltraProAudioProcessor::getMeterSnapshot() const noexcept
-{
-    return dspEngine.getMeterSnapshot();
-}
-
 bool VocalSuiteUltraProAudioProcessor::copyAnalyzerBuffer(DspEngine::AnalyzerBuffer& destination) const noexcept
 {
     return dspEngine.copyAnalyzerBuffer(destination);

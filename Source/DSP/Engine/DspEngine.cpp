@@ -29,12 +29,9 @@ void DspEngine::reset()
     stereoCorrelation.store(1.0f);
     stereoWidth.store(0.0f);
     outputMeter.reset();
-
-    for (auto& sample : analyzerFifo)
-        sample.store(0.0f, std::memory_order_relaxed);
-
-    analyzerWriteIndex.store(0, std::memory_order_release);
-    analyzerReady.store(false, std::memory_order_release);
+    analyzerFifo.fill(0.0f);
+    analyzerWriteIndex.store(0);
+    analyzerReady.store(false);
 }
 
 void DspEngine::process(juce::AudioBuffer<float>& buffer,
@@ -48,14 +45,7 @@ void DspEngine::process(juce::AudioBuffer<float>& buffer,
     if (numChannels <= 0 || numSamples <= 0)
         return;
 
-    if (static_cast<size_t>(numChannels) > channelStates.size())
-    {
-        sanitize(buffer);
-        updateInputMeters(buffer);
-        updateOutputMeters(buffer);
-        return;
-    }
-
+    ensureChannelState(numChannels);
     sanitize(buffer);
     updateInputMeters(buffer);
     gainReductionDb.store(0.0f);
@@ -92,37 +82,17 @@ float DspEngine::getLufsIntegrated() const noexcept { return lufsIntegrated.load
 float DspEngine::getStereoCorrelation() const noexcept { return stereoCorrelation.load(); }
 float DspEngine::getStereoWidth() const noexcept { return stereoWidth.load(); }
 
-DspEngine::MeterSnapshot DspEngine::getMeterSnapshot() const noexcept
-{
-    MeterSnapshot snapshot;
-    snapshot.inputPeak = inputPeak.load(std::memory_order_relaxed);
-    snapshot.inputRms = inputRms.load(std::memory_order_relaxed);
-    snapshot.outputPeak = outputPeak.load(std::memory_order_relaxed);
-    snapshot.outputRms = outputRms.load(std::memory_order_relaxed);
-    snapshot.gainReductionDb = gainReductionDb.load(std::memory_order_relaxed);
-    snapshot.truePeak = truePeak.load(std::memory_order_relaxed);
-    snapshot.truePeakDb = truePeakDb.load(std::memory_order_relaxed);
-    snapshot.outputPeakDb = outputPeakDb.load(std::memory_order_relaxed);
-    snapshot.outputRmsDb = outputRmsDb.load(std::memory_order_relaxed);
-    snapshot.lufsMomentary = lufsMomentary.load(std::memory_order_relaxed);
-    snapshot.lufsShortTerm = lufsShortTerm.load(std::memory_order_relaxed);
-    snapshot.lufsIntegrated = lufsIntegrated.load(std::memory_order_relaxed);
-    snapshot.stereoCorrelation = stereoCorrelation.load(std::memory_order_relaxed);
-    snapshot.stereoWidth = stereoWidth.load(std::memory_order_relaxed);
-    return snapshot;
-}
-
 bool DspEngine::copyAnalyzerBuffer(DspEngine::AnalyzerBuffer& destination) const noexcept
 {
-    if (! analyzerReady.load(std::memory_order_acquire))
+    if (! analyzerReady.load())
         return false;
 
-    const int write = juce::jlimit(0, analyzerFifoSize - 1, analyzerWriteIndex.load(std::memory_order_acquire));
+    const int write = juce::jlimit(0, analyzerFifoSize - 1, analyzerWriteIndex.load());
 
     for (int i = 0; i < analyzerFifoSize; ++i)
     {
         const int index = (write + i) & (analyzerFifoSize - 1);
-        destination[static_cast<size_t>(i)] = analyzerFifo[static_cast<size_t>(index)].load(std::memory_order_relaxed);
+        destination[static_cast<size_t>(i)] = analyzerFifo[static_cast<size_t>(index)];
     }
 
     return true;
@@ -358,7 +328,7 @@ void DspEngine::pushAnalyzerSamples(const juce::AudioBuffer<float>& buffer) noex
     if (numChannels <= 0 || numSamples <= 0)
         return;
 
-    int write = analyzerWriteIndex.load(std::memory_order_relaxed);
+    int write = analyzerWriteIndex.load();
 
     for (int i = 0; i < numSamples; ++i)
     {
@@ -368,12 +338,12 @@ void DspEngine::pushAnalyzerSamples(const juce::AudioBuffer<float>& buffer) noex
             mono += buffer.getReadPointer(ch)[i];
 
         mono /= static_cast<float>(numChannels);
-        analyzerFifo[static_cast<size_t>(write)].store(juce::jlimit(-1.0f, 1.0f, mono), std::memory_order_relaxed);
+        analyzerFifo[static_cast<size_t>(write)] = juce::jlimit(-1.0f, 1.0f, mono);
         write = (write + 1) & (analyzerFifoSize - 1);
     }
 
-    analyzerWriteIndex.store(write, std::memory_order_release);
-    analyzerReady.store(true, std::memory_order_release);
+    analyzerWriteIndex.store(write);
+    analyzerReady.store(true);
 }
 
 void DspEngine::updateInputMeters(const juce::AudioBuffer<float>& buffer)
@@ -464,28 +434,13 @@ void DspEngine::applyAdaptiveNoiseReduction(juce::AudioBuffer<float>& buffer,
     if (! getBoolParam(apvts, "NOISE_ON", true))
         return;
 
-    const float amount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "NOISE_REDUCE", 35.0f) / 100.0f);
-    const float detail = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "NOISE_DETAIL", 55.0f) / 100.0f);
-    const float manualFloorDb = getFloatParam(apvts, "NOISE_FLOOR", -58.0f);
+    const float amount = getFloatParam(apvts, "NOISE_REDUCE", 35.0f) / 100.0f;
+    const float detail = getFloatParam(apvts, "NOISE_DETAIL", 55.0f) / 100.0f;
+    const float floorDb = getFloatParam(apvts, "NOISE_FLOOR", -58.0f);
     const float attackCoef = makeCoefficient(getFloatParam(apvts, "NOISE_ATTACK", 12.0f), sampleRate);
     const float releaseCoef = makeCoefficient(getFloatParam(apvts, "NOISE_RELEASE", 180.0f), sampleRate);
-
-    const bool autoFloor = getBoolParam(apvts, "NOISE_AUTO_FLOOR", true);
-    const bool humRemove = getBoolParam(apvts, "NOISE_HUM_ON", true);
-    const float humFrequency = juce::jlimit(45.0f, 65.0f, getFloatParam(apvts, "NOISE_HUM_FREQ", 50.0f));
-    const float humAmount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "NOISE_HUM_AMOUNT", 45.0f) / 100.0f);
-    const float spectralAmount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "NOISE_SPECTRAL", 42.0f) / 100.0f);
-    const float breathPreserve = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "NOISE_BREATH_PRESERVE", 65.0f) / 100.0f);
-
-    const float maxReductionDb = juce::jmap(amount, 0.0f, 1.0f, 0.0f, 30.0f);
-    const float softnessDb = juce::jmap(detail, 0.0f, 1.0f, 22.0f, 5.5f);
-    const float floorTrackCoef = makeCoefficient(1600.0f, sampleRate);
-    const float breathCoef = makeCoefficient(90.0f, sampleRate);
-    const float highCoeff = makeOnePoleCoefficient(3600.0f, sampleRate);
-
-    const auto hum1 = makePeak(humFrequency, 24.0f, -24.0f * humAmount, sampleRate);
-    const auto hum2 = makePeak(humFrequency * 2.0f, 22.0f, -18.0f * humAmount, sampleRate);
-    const auto hum3 = makePeak(humFrequency * 3.0f, 18.0f, -12.0f * humAmount, sampleRate);
+    const float maxReductionDb = juce::jmap(amount, 0.0f, 1.0f, 0.0f, 24.0f);
+    const float softnessDb = juce::jmap(detail, 0.0f, 1.0f, 18.0f, 6.0f);
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
@@ -494,58 +449,18 @@ void DspEngine::applyAdaptiveNoiseReduction(juce::AudioBuffer<float>& buffer,
 
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
-            float sample = data[i];
-
-            if (humRemove && humAmount > 0.001f)
-            {
-                sample = state.humFundamental.process(sample, hum1);
-                sample = state.humSecond.process(sample, hum2);
-                sample = state.humThird.process(sample, hum3);
-            }
-
-            const float absSample = std::abs(sample);
+            const float absSample = std::abs(data[i]);
             const float envCoef = absSample > state.noiseEnvelope ? attackCoef : releaseCoef;
             state.noiseEnvelope = envCoef * state.noiseEnvelope + (1.0f - envCoef) * absSample;
 
-            if (autoFloor)
-            {
-                const float currentFloor = juce::jmax(0.0000005f, state.noiseFloorEstimate);
-                const bool likelyNoiseOnly = state.noiseEnvelope < currentFloor * 2.25f
-                                          || safeDb(state.noiseEnvelope) < manualFloorDb + 10.0f;
-
-                if (likelyNoiseOnly)
-                    state.noiseFloorEstimate = floorTrackCoef * state.noiseFloorEstimate
-                                             + (1.0f - floorTrackCoef) * juce::jmax(absSample, 0.0000005f);
-            }
-
-            const float trackedFloorDb = safeDb(state.noiseFloorEstimate) + 5.5f;
-            const float adaptiveFloorDb = autoFloor
-                ? juce::jlimit(-88.0f, -34.0f, juce::jmax(manualFloorDb, trackedFloorDb))
-                : manualFloorDb;
-
-            const float highBand = onePoleHighPassFromLowPass(sample, highCoeff, state.noiseHighState);
-            const float highRatio = juce::jlimit(0.0f, 1.0f, std::abs(highBand) / (absSample + 0.00002f));
-            state.noiseBreathEnvelope = breathCoef * state.noiseBreathEnvelope
-                                      + (1.0f - breathCoef) * highRatio;
-
             const float levelDb = safeDb(state.noiseEnvelope);
-            const float belowDb = juce::jlimit(0.0f, softnessDb, adaptiveFloorDb - levelDb);
-            float reductionDb = (belowDb / softnessDb) * maxReductionDb;
-
-            const float nearFloor = juce::jlimit(0.0f, 1.0f, (adaptiveFloorDb + 14.0f - levelDb) / 14.0f);
-            const float hissReductionDb = spectralAmount * highRatio * nearFloor * juce::jmap(amount, 0.0f, 1.0f, 0.0f, 8.0f);
-            reductionDb = juce::jmin(maxReductionDb, reductionDb + hissReductionDb);
-
-            // Preserve breath and consonant detail. High-band low-level content is often vocal detail,
-            // so the reducer backs off slightly when that signature is detected.
-            const float preserve = breathPreserve * state.noiseBreathEnvelope * 0.48f;
-            reductionDb *= (1.0f - juce::jlimit(0.0f, 0.55f, preserve));
-
+            const float belowDb = juce::jlimit(0.0f, softnessDb, floorDb - levelDb);
+            const float reductionDb = (belowDb / softnessDb) * maxReductionDb;
             const float targetGain = juce::Decibels::decibelsToGain(-reductionDb);
             const float gainCoef = targetGain < state.noiseGain ? attackCoef : releaseCoef;
-            state.noiseGain = gainCoef * state.noiseGain + (1.0f - gainCoef) * targetGain;
 
-            data[i] = sample * state.noiseGain;
+            state.noiseGain = gainCoef * state.noiseGain + (1.0f - gainCoef) * targetGain;
+            data[i] *= state.noiseGain;
         }
     }
 }
@@ -755,61 +670,105 @@ void DspEngine::applyProfessionalDeEsser(juce::AudioBuffer<float>& buffer,
 }
 
 void DspEngine::applyPreamp(juce::AudioBuffer<float>& buffer,
-                            juce::AudioProcessorValueTreeState& apvts) const
+                            juce::AudioProcessorValueTreeState& apvts)
 {
     if (! getBoolParam(apvts, "PREAMP_ON", true))
         return;
 
-    const float driveAmount = getFloatParam(apvts, "PREAMP_DRIVE", 20.0f) / 100.0f;
-    const float biasAmount = getFloatParam(apvts, "PREAMP_BIAS", 0.0f) / 100.0f;
-    const float mix = getFloatParam(apvts, "PREAMP_MIX", 100.0f) / 100.0f;
-    const float output = juce::Decibels::decibelsToGain(getFloatParam(apvts, "PREAMP_OUTPUT", 0.0f));
+    const float driveAmount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "PREAMP_DRIVE", 20.0f) / 100.0f);
+    const float biasAmount = juce::jlimit(-1.0f, 1.0f, getFloatParam(apvts, "PREAMP_BIAS", 0.0f) / 100.0f);
+    const float mix = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "PREAMP_MIX", 100.0f) / 100.0f);
+    const float requestedOutputDb = getFloatParam(apvts, "PREAMP_OUTPUT", 0.0f);
+    const bool safeMode = getBoolParam(apvts, "PREAMP_SAFE", true);
+    const float headroomDb = safeMode ? getFloatParam(apvts, "PREAMP_HEADROOM", 12.0f) : 0.0f;
+    const float ceilingDb = getFloatParam(apvts, "PREAMP_CEILING", -1.0f);
     const int mode = getChoiceParam(apvts, "PREAMP_MODE", 0);
 
-    const float drive = 1.0f + driveAmount * [mode]() noexcept
+    const float modeDriveScale = [mode]() noexcept
     {
         switch (mode)
         {
-            case 1: return 4.25f;
-            case 2: return 1.20f;
-            case 3: return 2.65f;
-            case 4: return 1.05f;
-            default: return 3.10f;
+            case 1: return 4.25f; // Metal
+            case 2: return 1.20f; // Nature
+            case 3: return 2.65f; // Vintage / tape
+            case 4: return 1.05f; // Clean
+            default: return 3.10f; // Tube
         }
     }();
 
+    const float drive = 1.0f + driveAmount * modeDriveScale;
     const float bias = juce::jmap(biasAmount, -0.18f, 0.18f);
-    const float autoTrim = juce::Decibels::decibelsToGain(-driveAmount * 5.0f);
+
+    // Commercial safety chain:
+    // headroom before non-linear stages -> colour -> auto trim -> DC block -> ceiling clip.
+    const float headroomGain = juce::Decibels::decibelsToGain(-juce::jlimit(0.0f, 18.0f, headroomDb));
+    const float outputGain = juce::Decibels::decibelsToGain(juce::jlimit(-18.0f, 12.0f, requestedOutputDb));
+    const float autoTrim = juce::Decibels::decibelsToGain(-(driveAmount * (safeMode ? 7.5f : 5.0f)));
+    const float targetMakeup = outputGain * autoTrim / juce::jmax(0.25f, headroomGain * (safeMode ? 1.0f : 0.80f));
+    const float ceiling = juce::Decibels::decibelsToGain(juce::jlimit(-12.0f, -0.3f, ceilingDb));
+    const float dcCoefficient = makeOnePoleCoefficient(18.0f, sampleRate);
+    const float smoothCoefficient = makeCoefficient(18.0f, sampleRate);
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
         auto* data = buffer.getWritePointer(ch);
+        auto& state = channelStates[static_cast<size_t>(ch)];
 
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
             const float dry = data[i];
-            float wet = dry;
+            const float protectedInput = juce::jlimit(-2.0f, 2.0f, dry * headroomGain);
+            float wet = protectedInput;
 
             switch (mode)
             {
-                case 1:
-                    wet = 0.72f * softClip(dry, drive * 1.35f) + 0.28f * softClip(dry * 1.7f, drive * 0.8f);
+                case 1: // Metal: stronger odd harmonics, still protected.
+                    wet = 0.68f * softClip(protectedInput, drive * 1.45f)
+                        + 0.24f * softClip(protectedInput * 1.85f, drive * 0.82f)
+                        + 0.08f * protectedInput;
                     break;
-                case 2:
-                    wet = 0.85f * dry + 0.15f * asymSoftClip(dry, drive, bias * 0.35f);
+
+                case 2: // Nature: light colour, mostly transparent.
+                    wet = 0.88f * protectedInput + 0.12f * asymSoftClip(protectedInput, drive * 0.75f, bias * 0.22f);
                     break;
-                case 3:
-                    wet = tapeShape(dry, drive);
+
+                case 3: // Vintage: tape-like compression.
+                    wet = tapeShape(protectedInput, drive * 0.92f);
                     break;
-                case 4:
-                    wet = 0.92f * dry + 0.08f * softClip(dry, drive);
+
+                case 4: // Clean: very small density without obvious distortion.
+                    wet = 0.94f * protectedInput + 0.06f * softClip(protectedInput, drive * 0.65f);
                     break;
-                default:
-                    wet = asymSoftClip(dry, drive, bias);
+
+                default: // Tube: asymmetric, even harmonic biased.
+                    wet = tubeShape(protectedInput, drive, bias);
                     break;
             }
 
-            data[i] = ((dry * (1.0f - mix)) + (wet * mix)) * output * autoTrim;
+            wet = dry * (1.0f - mix) + wet * mix;
+
+            state.preampOutputSmooth = smoothCoefficient * state.preampOutputSmooth
+                                     + (1.0f - smoothCoefficient) * targetMakeup;
+
+            wet *= state.preampOutputSmooth;
+
+            // DC blocker after asymmetric shaping.
+            state.preampDcState = dcCoefficient * state.preampDcState + (1.0f - dcCoefficient) * wet;
+            wet -= state.preampDcState;
+
+            // Last preamp safety stage. This is intentionally before the final limiter,
+            // so high Drive/Output cannot explode the next stages.
+            if (safeMode)
+            {
+                const float normalised = wet / juce::jmax(0.0001f, ceiling);
+                wet = ceiling * std::tanh(normalised);
+            }
+            else
+            {
+                wet = juce::jlimit(-1.5f, 1.5f, wet);
+            }
+
+            data[i] = juce::jlimit(-1.2f, 1.2f, wet);
         }
     }
 }

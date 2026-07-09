@@ -21,18 +21,16 @@ VocalSuiteUltraProAudioProcessorEditor::VocalSuiteUltraProAudioProcessorEditor(
 
 void VocalSuiteUltraProAudioProcessorEditor::timerCallback()
 {
-    const auto meter = processor.getMeterSnapshot();
+    inputMeter.setLevel(processor.getInputPeak(), processor.getInputRms());
+    outputMeter.setLevel(processor.getOutputPeak(), processor.getOutputRms());
+    levelMeter.setLevel(processor.getTruePeak(), processor.getOutputRms());
 
-    inputMeter.setLevel(meter.inputPeak, meter.inputRms);
-    outputMeter.setLevel(meter.outputPeak, meter.outputRms);
-    levelMeter.setLevel(meter.truePeak, meter.outputRms);
+    lufsMeter.setLoudness(processor.getLufsMomentary(),
+                          processor.getLufsShortTerm(),
+                          processor.getLufsIntegrated());
 
-    lufsMeter.setLoudness(meter.lufsMomentary,
-                          meter.lufsShortTerm,
-                          meter.lufsIntegrated);
-
-    correlationMeter.setCorrelation(meter.stereoCorrelation,
-                                    meter.stereoWidth);
+    correlationMeter.setCorrelation(processor.getStereoCorrelation(),
+                                    processor.getStereoWidth());
 
     footerBar.repaint();
 }
