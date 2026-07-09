@@ -42,11 +42,16 @@ namespace Parameters
         addBool(params, "NOISE_ON", "Noise Reduction", true);
         addFloat(params, "NOISE_REDUCE", "Noise Reduce", 0.0f, 100.0f, 35.0f);
         addFloat(params, "NOISE_DETAIL", "Noise Detail", 0.0f, 100.0f, 55.0f);
+        addFloat(params, "NOISE_FLOOR", "Noise Floor", -90.0f, -30.0f, -58.0f);
+        addFloat(params, "NOISE_ATTACK", "Noise Attack", 1.0f, 80.0f, 12.0f);
+        addFloat(params, "NOISE_RELEASE", "Noise Release", 30.0f, 500.0f, 180.0f);
 
         addBool(params, "PREAMP_ON", "Preamp", true);
         params.push_back(std::make_unique<juce::AudioParameterChoice>(
-            "PREAMP_MODE", "Preamp Mode", juce::StringArray { "Tube", "Metal", "Nature", "Vintage" }, 0));
+            "PREAMP_MODE", "Preamp Mode", juce::StringArray { "Tube", "Metal", "Nature", "Vintage", "Clean" }, 0));
         addFloat(params, "PREAMP_DRIVE", "Preamp Drive", 0.0f, 100.0f, 20.0f);
+        addFloat(params, "PREAMP_BIAS", "Preamp Bias", -100.0f, 100.0f, 0.0f);
+        addFloat(params, "PREAMP_MIX", "Preamp Mix", 0.0f, 100.0f, 100.0f);
         addFloat(params, "PREAMP_OUTPUT", "Preamp Output", -18.0f, 18.0f, 0.0f);
 
         addBool(params, "GATE_ON", "Gate", true);
@@ -54,10 +59,12 @@ namespace Parameters
         addFloat(params, "GATE_RANGE", "Gate Range", 0.0f, 80.0f, 30.0f);
         addFloat(params, "GATE_ATTACK", "Gate Attack", 0.1f, 50.0f, 5.0f);
         addFloat(params, "GATE_RELEASE", "Gate Release", 10.0f, 500.0f, 120.0f);
+        addFloat(params, "GATE_HOLD", "Gate Hold", 0.0f, 250.0f, 45.0f);
+        addFloat(params, "GATE_HYSTERESIS", "Gate Hysteresis", 0.0f, 12.0f, 4.0f);
 
         addBool(params, "HPF_ON", "High Pass", true);
         addFloat(params, "HPF_FREQ", "High Pass Frequency", 20.0f, 220.0f, 85.0f);
-        addFloat(params, "HPF_SLOPE", "High Pass Slope", 6.0f, 24.0f, 12.0f, 1.0f);
+        addFloat(params, "HPF_SLOPE", "High Pass Slope", 12.0f, 24.0f, 12.0f, 12.0f);
 
         addBool(params, "EQ_ON", "Surgical EQ", true);
         addFloat(params, "EQ_FREQ", "Surgical EQ Frequency", 120.0f, 6000.0f, 320.0f);

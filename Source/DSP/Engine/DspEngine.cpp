@@ -1,42 +1,17 @@
 #include "DspEngine.h"
 
-namespace
-{
-    float safeDb(float linear) noexcept
-    {
-        return juce::Decibels::gainToDecibels(juce::jmax(linear, 0.000001f));
-    }
-
-    float smootherCoefficient(float timeMs, double sampleRate) noexcept
-    {
-        const auto safeTime = juce::jmax(0.1f, timeMs) * 0.001f;
-        return std::exp(-1.0f / (safeTime * static_cast<float>(sampleRate)));
-    }
-
-    float softClip(float x, float drive) noexcept
-    {
-        const auto driven = x * drive;
-        const auto normaliser = std::tanh(drive);
-        return normaliser > 0.0001f ? std::tanh(driven) / normaliser : x;
-    }
-}
-
 void DspEngine::prepare(double newSampleRate, int samplesPerBlock, int numChannels)
 {
-    juce::ignoreUnused(samplesPerBlock);
-
     sampleRate = juce::jlimit(8000.0, 384000.0, newSampleRate);
+    lastBlockSize = juce::jmax(1, samplesPerBlock);
     ensureChannelState(numChannels);
     reset();
 }
 
 void DspEngine::reset()
 {
-    for (auto& state : hpfStates)
+    for (auto& state : channelStates)
         state = {};
-
-    std::fill(gateGain.begin(), gateGain.end(), 1.0f);
-    std::fill(compressorGain.begin(), compressorGain.end(), 1.0f);
 
     inputPeak.store(0.0f);
     outputPeak.store(0.0f);
@@ -50,8 +25,8 @@ void DspEngine::process(juce::AudioBuffer<float>& buffer,
 {
     juce::ScopedNoDenormals noDenormals;
 
-    const auto numChannels = buffer.getNumChannels();
-    const auto numSamples = buffer.getNumSamples();
+    const int numChannels = buffer.getNumChannels();
+    const int numSamples = buffer.getNumSamples();
 
     if (numChannels <= 0 || numSamples <= 0)
         return;
@@ -61,10 +36,14 @@ void DspEngine::process(juce::AudioBuffer<float>& buffer,
     updateInputMeters(buffer);
 
     applyInputGain(buffer, apvts);
-    applyNoiseAndGate(buffer, apvts);
+    applyAdaptiveNoiseReduction(buffer, apvts);
+    applySoftGate(buffer, apvts);
     applyHighPass(buffer, apvts);
     applyPreamp(buffer, apvts);
     applyCoreCompressor(buffer, apvts);
+    applyToneEq(buffer, apvts);
+    applySaturationStage(buffer, apvts);
+    applyHiEndExciter(buffer, apvts);
     applyLimiterAndOutput(buffer, apvts);
 
     sanitize(buffer);
@@ -126,18 +105,78 @@ int DspEngine::getChoiceParam(juce::AudioProcessorValueTreeState& apvts,
     return fallback;
 }
 
+float DspEngine::safeDb(float linear) noexcept
+{
+    return juce::Decibels::gainToDecibels(juce::jmax(linear, 0.000001f));
+}
+
+float DspEngine::makeCoefficient(float timeMs, double sr) noexcept
+{
+    const float safeTime = juce::jmax(0.1f, timeMs) * 0.001f;
+    return std::exp(-1.0f / (safeTime * static_cast<float>(sr)));
+}
+
+float DspEngine::onePoleHighPass(float input,
+                                 float alpha,
+                                 float& previousInput,
+                                 float& previousOutput) noexcept
+{
+    const float output = alpha * (previousOutput + input - previousInput);
+    previousInput = input;
+    previousOutput = output;
+    return output;
+}
+
+float DspEngine::softClip(float sample, float drive) noexcept
+{
+    const float safeDrive = juce::jlimit(1.0f, 12.0f, drive);
+    const float normaliser = std::tanh(safeDrive);
+
+    if (normaliser <= 0.0001f)
+        return sample;
+
+    return std::tanh(sample * safeDrive) / normaliser;
+}
+
+
+float DspEngine::asymSoftClip(float sample, float drive, float bias) noexcept
+{
+    const float biased = sample + bias;
+    const float shaped = softClip(biased, drive) - softClip(bias, drive);
+    return juce::jlimit(-1.2f, 1.2f, shaped);
+}
+
+float DspEngine::tapeShape(float sample, float drive) noexcept
+{
+    const float driven = sample * drive;
+    const float cubic = driven - (0.18f * driven * driven * driven);
+    return juce::jlimit(-1.2f, 1.2f, cubic / juce::jmax(1.0f, drive * 0.72f));
+}
+
+float DspEngine::makeOnePoleCoefficient(float frequency, double sr) noexcept
+{
+    const float safeFrequency = juce::jlimit(20.0f, 22000.0f, frequency);
+    const float safeSampleRate = static_cast<float>(juce::jlimit(8000.0, 384000.0, sr));
+    return std::exp(-2.0f * juce::MathConstants<float>::pi * safeFrequency / safeSampleRate);
+}
+
+float DspEngine::onePoleLowPass(float input, float coefficient, float& state) noexcept
+{
+    state = coefficient * state + (1.0f - coefficient) * input;
+    return state;
+}
+
+float DspEngine::onePoleHighPassFromLowPass(float input, float coefficient, float& state) noexcept
+{
+    return input - onePoleLowPass(input, coefficient, state);
+}
+
 void DspEngine::ensureChannelState(int numChannels)
 {
     const auto channelCount = static_cast<size_t>(juce::jmax(0, numChannels));
 
-    if (hpfStates.size() != channelCount)
-        hpfStates.assign(channelCount, {});
-
-    if (gateGain.size() != channelCount)
-        gateGain.assign(channelCount, 1.0f);
-
-    if (compressorGain.size() != channelCount)
-        compressorGain.assign(channelCount, 1.0f);
+    if (channelStates.size() != channelCount)
+        channelStates.assign(channelCount, {});
 }
 
 void DspEngine::updateInputMeters(const juce::AudioBuffer<float>& buffer)
@@ -152,7 +191,7 @@ void DspEngine::updateInputMeters(const juce::AudioBuffer<float>& buffer)
 
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
-            const auto sample = data[i];
+            const float sample = data[i];
             peak = juce::jmax(peak, std::abs(sample));
             squareSum += static_cast<double>(sample) * static_cast<double>(sample);
             ++count;
@@ -160,7 +199,7 @@ void DspEngine::updateInputMeters(const juce::AudioBuffer<float>& buffer)
     }
 
     inputPeak.store(juce::jlimit(0.0f, 1.5f, peak));
-    inputRms.store(count > 0 ? std::sqrt(static_cast<float>(squareSum / count)) : 0.0f);
+    inputRms.store(count > 0 ? std::sqrt(static_cast<float>(squareSum / static_cast<double>(count))) : 0.0f);
 }
 
 void DspEngine::updateOutputMeters(const juce::AudioBuffer<float>& buffer)
@@ -175,7 +214,7 @@ void DspEngine::updateOutputMeters(const juce::AudioBuffer<float>& buffer)
 
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
-            const auto sample = data[i];
+            const float sample = data[i];
             peak = juce::jmax(peak, std::abs(sample));
             squareSum += static_cast<double>(sample) * static_cast<double>(sample);
             ++count;
@@ -183,50 +222,104 @@ void DspEngine::updateOutputMeters(const juce::AudioBuffer<float>& buffer)
     }
 
     outputPeak.store(juce::jlimit(0.0f, 1.5f, peak));
-    outputRms.store(count > 0 ? std::sqrt(static_cast<float>(squareSum / count)) : 0.0f);
+    outputRms.store(count > 0 ? std::sqrt(static_cast<float>(squareSum / static_cast<double>(count))) : 0.0f);
 }
 
 void DspEngine::applyInputGain(juce::AudioBuffer<float>& buffer,
                                juce::AudioProcessorValueTreeState& apvts) const
 {
-    const auto gainDb = getFloatParam(apvts, "INPUT_GAIN", 0.0f);
+    const float gainDb = getFloatParam(apvts, "INPUT_GAIN", 0.0f);
     buffer.applyGain(juce::Decibels::decibelsToGain(gainDb));
 }
 
-void DspEngine::applyNoiseAndGate(juce::AudioBuffer<float>& buffer,
-                                  juce::AudioProcessorValueTreeState& apvts)
+void DspEngine::applyAdaptiveNoiseReduction(juce::AudioBuffer<float>& buffer,
+                                            juce::AudioProcessorValueTreeState& apvts)
 {
-    const auto noiseOn = getBoolParam(apvts, "NOISE_ON", true);
-    const auto gateOn = getBoolParam(apvts, "GATE_ON", true);
-
-    if (! noiseOn && ! gateOn)
+    if (! getBoolParam(apvts, "NOISE_ON", true))
         return;
 
-    const auto noiseAmount = getFloatParam(apvts, "NOISE_REDUCE", 0.0f) / 100.0f;
-    const auto thresholdDb = getFloatParam(apvts, "GATE_THRESH", -45.0f);
-    const auto rangeDb = getFloatParam(apvts, "GATE_RANGE", 30.0f);
-    const auto attack = smootherCoefficient(getFloatParam(apvts, "GATE_ATTACK", 5.0f), sampleRate);
-    const auto release = smootherCoefficient(getFloatParam(apvts, "GATE_RELEASE", 120.0f), sampleRate);
+    const float amount = getFloatParam(apvts, "NOISE_REDUCE", 35.0f) / 100.0f;
+    const float detail = getFloatParam(apvts, "NOISE_DETAIL", 55.0f) / 100.0f;
+    const float floorDb = getFloatParam(apvts, "NOISE_FLOOR", -58.0f);
+    const float attackCoef = makeCoefficient(getFloatParam(apvts, "NOISE_ATTACK", 12.0f), sampleRate);
+    const float releaseCoef = makeCoefficient(getFloatParam(apvts, "NOISE_RELEASE", 180.0f), sampleRate);
+    const float maxReductionDb = juce::jmap(amount, 0.0f, 1.0f, 0.0f, 24.0f);
+    const float softnessDb = juce::jmap(detail, 0.0f, 1.0f, 18.0f, 6.0f);
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
         auto* data = buffer.getWritePointer(ch);
-        auto currentGain = gateGain[static_cast<size_t>(ch)];
+        auto& state = channelStates[static_cast<size_t>(ch)];
 
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
-            const auto levelDb = safeDb(std::abs(data[i]));
-            const auto noiseRange = noiseOn ? noiseAmount * 12.0f : 0.0f;
-            const auto gateRange = gateOn && levelDb < thresholdDb ? rangeDb : 0.0f;
-            const auto totalReduction = juce::jlimit(0.0f, 80.0f, noiseRange + gateRange);
-            const auto targetGain = juce::Decibels::decibelsToGain(-totalReduction);
-            const auto coefficient = targetGain < currentGain ? attack : release;
+            const float absSample = std::abs(data[i]);
+            const float envTarget = absSample;
+            const float envCoef = envTarget > state.noiseEnvelope ? attackCoef : releaseCoef;
+            state.noiseEnvelope = envCoef * state.noiseEnvelope + (1.0f - envCoef) * envTarget;
 
-            currentGain = coefficient * currentGain + (1.0f - coefficient) * targetGain;
-            data[i] *= currentGain;
+            const float levelDb = safeDb(state.noiseEnvelope);
+            const float belowDb = juce::jlimit(0.0f, softnessDb, floorDb - levelDb);
+            const float reductionDb = (belowDb / softnessDb) * maxReductionDb;
+            const float targetGain = juce::Decibels::decibelsToGain(-reductionDb);
+            const float gainCoef = targetGain < state.noiseGain ? attackCoef : releaseCoef;
+
+            state.noiseGain = gainCoef * state.noiseGain + (1.0f - gainCoef) * targetGain;
+            data[i] *= state.noiseGain;
         }
+    }
+}
 
-        gateGain[static_cast<size_t>(ch)] = currentGain;
+void DspEngine::applySoftGate(juce::AudioBuffer<float>& buffer,
+                              juce::AudioProcessorValueTreeState& apvts)
+{
+    if (! getBoolParam(apvts, "GATE_ON", true))
+        return;
+
+    const float thresholdDb = getFloatParam(apvts, "GATE_THRESH", -45.0f);
+    const float rangeDb = getFloatParam(apvts, "GATE_RANGE", 30.0f);
+    const float attackCoef = makeCoefficient(getFloatParam(apvts, "GATE_ATTACK", 5.0f), sampleRate);
+    const float releaseCoef = makeCoefficient(getFloatParam(apvts, "GATE_RELEASE", 120.0f), sampleRate);
+    const float hysteresisDb = getFloatParam(apvts, "GATE_HYSTERESIS", 4.0f);
+    const float holdMs = getFloatParam(apvts, "GATE_HOLD", 45.0f);
+    const int holdSamples = juce::jlimit(0, static_cast<int>(sampleRate),
+                                         static_cast<int>((holdMs * 0.001f) * static_cast<float>(sampleRate)));
+
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    {
+        auto* data = buffer.getWritePointer(ch);
+        auto& state = channelStates[static_cast<size_t>(ch)];
+
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            const float absSample = std::abs(data[i]);
+            const float envTarget = absSample;
+            const float envCoef = envTarget > state.gateEnvelope ? attackCoef : releaseCoef;
+            state.gateEnvelope = envCoef * state.gateEnvelope + (1.0f - envCoef) * envTarget;
+
+            const float levelDb = safeDb(state.gateEnvelope);
+            const float openDb = thresholdDb + (hysteresisDb * 0.5f);
+            const float closeDb = thresholdDb - (hysteresisDb * 0.5f);
+
+            if (levelDb >= openDb)
+            {
+                state.gateOpen = true;
+                state.gateHoldSamples = holdSamples;
+            }
+            else if (levelDb < closeDb)
+            {
+                if (state.gateHoldSamples > 0)
+                    --state.gateHoldSamples;
+                else
+                    state.gateOpen = false;
+            }
+
+            const float targetGain = state.gateOpen ? 1.0f : juce::Decibels::decibelsToGain(-rangeDb);
+            const float gainCoef = targetGain < state.gateGain ? attackCoef : releaseCoef;
+
+            state.gateGain = gainCoef * state.gateGain + (1.0f - gainCoef) * targetGain;
+            data[i] *= state.gateGain;
+        }
     }
 }
 
@@ -236,22 +329,25 @@ void DspEngine::applyHighPass(juce::AudioBuffer<float>& buffer,
     if (! getBoolParam(apvts, "HPF_ON", true))
         return;
 
-    const auto frequency = juce::jlimit(20.0f, 220.0f, getFloatParam(apvts, "HPF_FREQ", 85.0f));
-    const auto rc = 1.0f / (2.0f * juce::MathConstants<float>::pi * frequency);
-    const auto dt = 1.0f / static_cast<float>(sampleRate);
-    const auto alpha = rc / (rc + dt);
+    const float frequency = juce::jlimit(20.0f, 220.0f, getFloatParam(apvts, "HPF_FREQ", 85.0f));
+    const float slope = getFloatParam(apvts, "HPF_SLOPE", 12.0f);
+    const bool useSecondPole = slope >= 18.0f;
+    const float rc = 1.0f / (2.0f * juce::MathConstants<float>::pi * frequency);
+    const float dt = 1.0f / static_cast<float>(sampleRate);
+    const float alpha = rc / (rc + dt);
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
-        auto& state = hpfStates[static_cast<size_t>(ch)];
         auto* data = buffer.getWritePointer(ch);
+        auto& state = channelStates[static_cast<size_t>(ch)];
 
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
-            const auto x = data[i];
-            const auto y = alpha * (state.previousOutput + x - state.previousInput);
-            state.previousInput = x;
-            state.previousOutput = y;
+            float y = onePoleHighPass(data[i], alpha, state.hpf1PreviousInput, state.hpf1PreviousOutput);
+
+            if (useSecondPole)
+                y = onePoleHighPass(y, alpha, state.hpf2PreviousInput, state.hpf2PreviousOutput);
+
             data[i] = y;
         }
     }
@@ -263,29 +359,62 @@ void DspEngine::applyPreamp(juce::AudioBuffer<float>& buffer,
     if (! getBoolParam(apvts, "PREAMP_ON", true))
         return;
 
-    const auto drive = getFloatParam(apvts, "PREAMP_DRIVE", 20.0f) / 100.0f;
-    const auto output = juce::Decibels::decibelsToGain(getFloatParam(apvts, "PREAMP_OUTPUT", 0.0f));
-    const auto mode = getChoiceParam(apvts, "PREAMP_MODE", 0);
+    const float driveAmount = getFloatParam(apvts, "PREAMP_DRIVE", 20.0f) / 100.0f;
+    const float biasAmount = getFloatParam(apvts, "PREAMP_BIAS", 0.0f) / 100.0f;
+    const float mix = getFloatParam(apvts, "PREAMP_MIX", 100.0f) / 100.0f;
+    const float output = juce::Decibels::decibelsToGain(getFloatParam(apvts, "PREAMP_OUTPUT", 0.0f));
+    const int mode = getChoiceParam(apvts, "PREAMP_MODE", 0);
 
-    const auto modeDrive = [mode]() noexcept
+    const float drive = 1.0f + driveAmount * [mode]() noexcept
     {
         switch (mode)
         {
-            case 1: return 3.2f; // Metal
-            case 2: return 1.35f; // Nature
-            case 3: return 2.15f; // Vintage
-            default: return 2.45f; // Tube
+            case 1: return 4.25f; // Metal
+            case 2: return 1.20f; // Nature
+            case 3: return 2.65f; // Vintage
+            case 4: return 1.05f; // Clean
+            default: return 3.10f; // Tube
         }
     }();
 
-    const auto amount = 1.0f + drive * modeDrive;
+    const float bias = juce::jmap(biasAmount, -0.18f, 0.18f);
+    const float autoTrim = juce::Decibels::decibelsToGain(-driveAmount * 5.0f);
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
         auto* data = buffer.getWritePointer(ch);
 
         for (int i = 0; i < buffer.getNumSamples(); ++i)
-            data[i] = softClip(data[i], amount) * output;
+        {
+            const float dry = data[i];
+            float wet = dry;
+
+            switch (mode)
+            {
+                case 1: // Metal: stronger odd harmonics, still bounded.
+                    wet = 0.72f * softClip(dry, drive * 1.35f)
+                        + 0.28f * softClip(dry * 1.7f, drive * 0.8f);
+                    break;
+
+                case 2: // Nature: light transformer-style density.
+                    wet = 0.85f * dry + 0.15f * asymSoftClip(dry, drive, bias * 0.35f);
+                    break;
+
+                case 3: // Vintage: softer tape-like compression.
+                    wet = tapeShape(dry, drive);
+                    break;
+
+                case 4: // Clean: subtle peak rounding only.
+                    wet = 0.92f * dry + 0.08f * softClip(dry, drive);
+                    break;
+
+                default: // Tube: asymmetric 2nd harmonic emphasis.
+                    wet = asymSoftClip(dry, drive, bias);
+                    break;
+            }
+
+            data[i] = ((dry * (1.0f - mix)) + (wet * mix)) * output * autoTrim;
+        }
     }
 }
 
@@ -295,47 +424,135 @@ void DspEngine::applyCoreCompressor(juce::AudioBuffer<float>& buffer,
     if (! getBoolParam(apvts, "COMP_ON", true))
         return;
 
-    const auto inputGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "COMP_INPUT", 0.0f));
-    const auto outputGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "COMP_OUTPUT", 0.0f));
-    const auto mix = getFloatParam(apvts, "COMP_MIX", 75.0f) / 100.0f;
-    const auto attack = smootherCoefficient(getFloatParam(apvts, "COMP_ATTACK", 12.0f), sampleRate);
-    const auto release = smootherCoefficient(getFloatParam(apvts, "COMP_RELEASE", 80.0f), sampleRate);
-    constexpr auto thresholdDb = -18.0f;
-    constexpr auto ratio = 4.0f;
+    const float inputGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "COMP_INPUT", 0.0f));
+    const float outputGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "COMP_OUTPUT", 0.0f));
+    const float mix = getFloatParam(apvts, "COMP_MIX", 75.0f) / 100.0f;
+    const float attackCoef = makeCoefficient(getFloatParam(apvts, "COMP_ATTACK", 12.0f), sampleRate);
+    const float releaseCoef = makeCoefficient(getFloatParam(apvts, "COMP_RELEASE", 80.0f), sampleRate);
+    constexpr float thresholdDb = -18.0f;
+    constexpr float ratio = 4.0f;
     float maxReduction = 0.0f;
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
         auto* data = buffer.getWritePointer(ch);
-        auto currentGain = compressorGain[static_cast<size_t>(ch)];
+        auto& state = channelStates[static_cast<size_t>(ch)];
 
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
-            const auto dry = data[i];
-            const auto driven = dry * inputGain;
-            const auto levelDb = safeDb(std::abs(driven));
-            const auto overDb = juce::jmax(0.0f, levelDb - thresholdDb);
-            const auto reductionDb = overDb - (overDb / ratio);
-            const auto targetGain = juce::Decibels::decibelsToGain(-reductionDb);
-            const auto coefficient = targetGain < currentGain ? attack : release;
+            const float dry = data[i];
+            const float driven = dry * inputGain;
+            const float levelDb = safeDb(std::abs(driven));
+            const float overDb = juce::jmax(0.0f, levelDb - thresholdDb);
+            const float reductionDb = overDb - (overDb / ratio);
+            const float targetGain = juce::Decibels::decibelsToGain(-reductionDb);
+            const float gainCoef = targetGain < state.compressorGain ? attackCoef : releaseCoef;
 
-            currentGain = coefficient * currentGain + (1.0f - coefficient) * targetGain;
-            const auto compressed = driven * currentGain * outputGain;
+            state.compressorGain = gainCoef * state.compressorGain + (1.0f - gainCoef) * targetGain;
+            const float compressed = driven * state.compressorGain * outputGain;
             data[i] = dry * (1.0f - mix) + compressed * mix;
             maxReduction = juce::jmax(maxReduction, reductionDb);
         }
-
-        compressorGain[static_cast<size_t>(ch)] = currentGain;
     }
 
     gainReductionDb.store(maxReduction);
 }
 
+void DspEngine::applyToneEq(juce::AudioBuffer<float>& buffer,
+                            juce::AudioProcessorValueTreeState& apvts)
+{
+    if (! getBoolParam(apvts, "TONE_ON", true))
+        return;
+
+    const float lowGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "TONE_LOW", 0.0f));
+    const float midGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "TONE_MID", -1.5f));
+    const float highGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "TONE_HIGH", 1.5f));
+    const float airGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "TONE_AIR", 1.2f));
+    const float makeup = juce::Decibels::decibelsToGain(getFloatParam(apvts, "TONE_GAIN", 0.0f));
+
+    const float lowCoeff = makeOnePoleCoefficient(220.0f, sampleRate);
+    const float midLowCoeff = makeOnePoleCoefficient(450.0f, sampleRate);
+    const float midHighCoeff = makeOnePoleCoefficient(3200.0f, sampleRate);
+    const float highCoeff = makeOnePoleCoefficient(8200.0f, sampleRate);
+
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    {
+        auto* data = buffer.getWritePointer(ch);
+        auto& state = channelStates[static_cast<size_t>(ch)];
+
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            const float x = data[i];
+            const float low = onePoleLowPass(x, lowCoeff, state.toneLowState);
+            const float belowMid = onePoleLowPass(x, midLowCoeff, state.toneMidLowState);
+            const float belowHigh = onePoleLowPass(x, midHighCoeff, state.toneMidHighState);
+            const float high = onePoleHighPassFromLowPass(x, highCoeff, state.toneHighState);
+            const float mid = belowHigh - belowMid;
+            const float body = x - low - mid - high;
+            const float air = high * (airGain - 1.0f) * 0.65f;
+
+            data[i] = ((low * lowGain) + (mid * midGain) + (high * highGain) + body + air) * makeup;
+        }
+    }
+}
+
+void DspEngine::applySaturationStage(juce::AudioBuffer<float>& buffer,
+                                     juce::AudioProcessorValueTreeState& apvts) const
+{
+    if (! getBoolParam(apvts, "SATURATION_ON", true))
+        return;
+
+    const float driveAmount = getFloatParam(apvts, "SATURATION_DRIVE", 18.0f) / 100.0f;
+    const float mix = getFloatParam(apvts, "SATURATION_MIX", 35.0f) / 100.0f;
+    const float drive = 1.0f + driveAmount * 4.0f;
+    const float trim = juce::Decibels::decibelsToGain(-driveAmount * 3.0f);
+
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    {
+        auto* data = buffer.getWritePointer(ch);
+
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            const float dry = data[i];
+            const float tube = asymSoftClip(dry, drive, 0.035f * driveAmount);
+            const float tape = tapeShape(dry, drive * 0.82f);
+            const float wet = (tube * 0.62f + tape * 0.38f) * trim;
+            data[i] = dry * (1.0f - mix) + wet * mix;
+        }
+    }
+}
+
+void DspEngine::applyHiEndExciter(juce::AudioBuffer<float>& buffer,
+                                  juce::AudioProcessorValueTreeState& apvts)
+{
+    if (! getBoolParam(apvts, "HIEND_ON", true))
+        return;
+
+    const float frequency = getFloatParam(apvts, "HIEND_FREQ", 12000.0f);
+    const float amount = getFloatParam(apvts, "HIEND_AMOUNT", 22.0f) / 100.0f;
+    const float coeff = makeOnePoleCoefficient(frequency, sampleRate);
+    const float gain = amount * 0.42f;
+
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    {
+        auto* data = buffer.getWritePointer(ch);
+        auto& state = channelStates[static_cast<size_t>(ch)];
+
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            const float dry = data[i];
+            const float high = onePoleHighPassFromLowPass(dry, coeff, state.hiEndState);
+            const float sparkle = softClip(high * 2.6f, 2.0f) * gain;
+            data[i] = dry + sparkle;
+        }
+    }
+}
+
 void DspEngine::applyLimiterAndOutput(juce::AudioBuffer<float>& buffer,
                                       juce::AudioProcessorValueTreeState& apvts)
 {
-    const auto limiterOn = getBoolParam(apvts, "LIMITER_ON", true);
-    const auto outputGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "OUTPUT_GAIN", 0.0f));
+    const bool limiterOn = getBoolParam(apvts, "LIMITER_ON", true);
+    const float outputGain = juce::Decibels::decibelsToGain(getFloatParam(apvts, "OUTPUT_GAIN", 0.0f));
     constexpr float ceiling = 0.96f;
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
@@ -344,7 +561,7 @@ void DspEngine::applyLimiterAndOutput(juce::AudioBuffer<float>& buffer,
 
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
-            auto sample = data[i] * outputGain;
+            float sample = data[i] * outputGain;
 
             if (limiterOn)
                 sample = juce::jlimit(-ceiling, ceiling, sample);
