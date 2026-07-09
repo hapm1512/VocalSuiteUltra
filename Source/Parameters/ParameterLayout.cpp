@@ -91,6 +91,37 @@ namespace Parameters
         addFloat(params, "EQ_NOTCH_GAIN", "Notch Gain", -12.0f, 6.0f, 0.0f);
         addFloat(params, "EQ_NOTCH_Q", "Notch Q", 1.0f, 18.0f, 8.0f);
 
+
+        addBool(params, "DYN_EQ_ON", "Dynamic EQ", true);
+        addFloat(params, "DYN_EQ_MIX", "Dynamic EQ Mix", 0.0f, 100.0f, 100.0f);
+        addFloat(params, "DYN_EQ_ATTACK", "Dynamic EQ Attack", 0.5f, 80.0f, 8.0f);
+        addFloat(params, "DYN_EQ_RELEASE", "Dynamic EQ Release", 20.0f, 600.0f, 160.0f);
+        addFloat(params, "EQ_TILT", "EQ Tilt", -6.0f, 6.0f, 0.0f);
+        addFloat(params, "EQ_AUTO_GAIN", "EQ Auto Gain", 0.0f, 100.0f, 70.0f);
+        addFloat(params, "EQ_ANALOG_Q", "EQ Analog Q", 0.0f, 100.0f, 60.0f);
+        addFloat(params, "EQ_LOW_PROTECT", "EQ Low Protect", 0.0f, 100.0f, 55.0f);
+        addFloat(params, "EQ_HIGH_PROTECT", "EQ High Protect", 0.0f, 100.0f, 65.0f);
+
+        addFloat(params, "DYN_EQ1_FREQ", "Dynamic EQ 1 Frequency", 120.0f, 600.0f, 260.0f);
+        addFloat(params, "DYN_EQ1_Q", "Dynamic EQ 1 Q", 0.3f, 8.0f, 1.6f);
+        addFloat(params, "DYN_EQ1_THRESH", "Dynamic EQ 1 Threshold", -70.0f, -10.0f, -38.0f);
+        addFloat(params, "DYN_EQ1_AMOUNT", "Dynamic EQ 1 Amount", 0.0f, 12.0f, 2.2f);
+
+        addFloat(params, "DYN_EQ2_FREQ", "Dynamic EQ 2 Frequency", 250.0f, 1200.0f, 520.0f);
+        addFloat(params, "DYN_EQ2_Q", "Dynamic EQ 2 Q", 0.3f, 8.0f, 1.4f);
+        addFloat(params, "DYN_EQ2_THRESH", "Dynamic EQ 2 Threshold", -70.0f, -10.0f, -36.0f);
+        addFloat(params, "DYN_EQ2_AMOUNT", "Dynamic EQ 2 Amount", 0.0f, 12.0f, 1.8f);
+
+        addFloat(params, "DYN_EQ3_FREQ", "Dynamic EQ 3 Frequency", 1500.0f, 5000.0f, 2800.0f);
+        addFloat(params, "DYN_EQ3_Q", "Dynamic EQ 3 Q", 0.3f, 10.0f, 2.2f);
+        addFloat(params, "DYN_EQ3_THRESH", "Dynamic EQ 3 Threshold", -70.0f, -10.0f, -34.0f);
+        addFloat(params, "DYN_EQ3_AMOUNT", "Dynamic EQ 3 Amount", 0.0f, 12.0f, 2.4f);
+
+        addFloat(params, "DYN_EQ4_FREQ", "Dynamic EQ 4 Frequency", 4000.0f, 10000.0f, 6200.0f);
+        addFloat(params, "DYN_EQ4_Q", "Dynamic EQ 4 Q", 0.3f, 10.0f, 2.0f);
+        addFloat(params, "DYN_EQ4_THRESH", "Dynamic EQ 4 Threshold", -70.0f, -10.0f, -36.0f);
+        addFloat(params, "DYN_EQ4_AMOUNT", "Dynamic EQ 4 Amount", 0.0f, 12.0f, 1.6f);
+
         addBool(params, "DEESSER_ON", "DeEsser", true);
         params.push_back(std::make_unique<juce::AudioParameterChoice>(
             "DEESSER_MODE", "DeEsser Mode", juce::StringArray { "Wide", "Split" }, 1));

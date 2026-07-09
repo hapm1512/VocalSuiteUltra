@@ -116,6 +116,10 @@ private:
         BiquadState airShelf;
         BiquadState deEsserBand;
 
+        std::array<BiquadState, 4> dynamicBell;
+        std::array<BiquadState, 4> dynamicDetector;
+        std::array<float, 4> dynamicEnvelope {};
+
         void resetFilters() noexcept
         {
             hpf1.reset();
@@ -130,6 +134,14 @@ private:
             highShelf.reset();
             airShelf.reset();
             deEsserBand.reset();
+
+            for (auto& filter : dynamicBell)
+                filter.reset();
+
+            for (auto& detector : dynamicDetector)
+                detector.reset();
+
+            dynamicEnvelope.fill(0.0f);
         }
     };
 

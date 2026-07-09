@@ -554,12 +554,13 @@ void DspEngine::applyProfessionalVocalEq(juce::AudioBuffer<float>& buffer,
 {
     const bool surgicalOn = getBoolParam(apvts, "EQ_ON", true);
     const bool toneOn = getBoolParam(apvts, "TONE_ON", true);
+    const bool dynamicOn = getBoolParam(apvts, "DYN_EQ_ON", true);
 
-    if (! surgicalOn && ! toneOn)
+    if (! surgicalOn && ! toneOn && ! dynamicOn)
         return;
 
-    const float eqMix = getFloatParam(apvts, "EQ_MIX", 100.0f) / 100.0f;
-    const float makeup = juce::Decibels::decibelsToGain(getFloatParam(apvts, "TONE_GAIN", 0.0f));
+    const float eqMix = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "EQ_MIX", 100.0f) / 100.0f);
+    const float makeupDb = getFloatParam(apvts, "TONE_GAIN", 0.0f);
 
     const float mudFreq = getFloatParam(apvts, "EQ_MUD_FREQ", getFloatParam(apvts, "EQ_FREQ", 320.0f));
     const float mudGain = getFloatParam(apvts, "EQ_MUD_GAIN", getFloatParam(apvts, "EQ_GAIN", -2.5f));
@@ -583,13 +584,75 @@ void DspEngine::applyProfessionalVocalEq(juce::AudioBuffer<float>& buffer,
     const float highFreq = getFloatParam(apvts, "TONE_HIGH_FREQ", 6500.0f);
     const float airFreq = getFloatParam(apvts, "AIR_FREQ", 12000.0f);
 
+    // Commercial EQ protection: prevents high boost from making vocal thin,
+    // and prevents low boost from turning boxy/muddy.
+    const float highProtect = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "EQ_HIGH_PROTECT", 65.0f) / 100.0f);
+    const float lowProtect = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "EQ_LOW_PROTECT", 55.0f) / 100.0f);
+    const float tiltDb = getFloatParam(apvts, "EQ_TILT", 0.0f);
+    const float analogQ = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "EQ_ANALOG_Q", 60.0f) / 100.0f);
+    const float autoGainAmount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "EQ_AUTO_GAIN", 70.0f) / 100.0f);
+
+    const float protectedLowGain = lowGain - juce::jmax(0.0f, lowGain) * lowProtect * 0.30f;
+    const float protectedHighGain = highGain - juce::jmax(0.0f, highGain) * highProtect * 0.18f;
+    const float protectedAirGain = airGain - juce::jmax(0.0f, airGain) * highProtect * 0.12f;
+    const float analogMidQ = juce::jmap(analogQ, 0.70f, 1.25f);
+
+    const float totalBoost = juce::jmax(0.0f, protectedLowGain)
+                           + juce::jmax(0.0f, midGain)
+                           + juce::jmax(0.0f, protectedHighGain)
+                           + juce::jmax(0.0f, protectedAirGain)
+                           + juce::jmax(0.0f, tiltDb);
+
+    const float autoGainDb = -0.18f * totalBoost * autoGainAmount;
+    const float makeup = juce::Decibels::decibelsToGain(makeupDb + autoGainDb);
+
     const auto mud = makePeak(mudFreq, mudQ, mudGain, sampleRate);
     const auto harsh = makePeak(harshFreq, harshQ, harshGain, sampleRate);
     const auto notch = makePeak(notchFreq, notchQ, notchGain, sampleRate);
-    const auto lowShelf = makeLowShelf(lowFreq, lowGain, sampleRate);
-    const auto midPeak = makePeak(midFreq, 0.85f, midGain, sampleRate);
-    const auto highShelf = makeHighShelf(highFreq, highGain, sampleRate);
-    const auto airShelf = makeHighShelf(airFreq, airGain, sampleRate);
+    const auto lowShelf = makeLowShelf(lowFreq, protectedLowGain - (tiltDb * 0.35f), sampleRate);
+    const auto midPeak = makePeak(midFreq, analogMidQ, midGain, sampleRate);
+    const auto highShelf = makeHighShelf(highFreq, protectedHighGain + (tiltDb * 0.35f), sampleRate);
+    const auto airShelf = makeHighShelf(airFreq, protectedAirGain, sampleRate);
+
+    std::array<float, 4> dynFreq
+    {
+        getFloatParam(apvts, "DYN_EQ1_FREQ", 260.0f),
+        getFloatParam(apvts, "DYN_EQ2_FREQ", 520.0f),
+        getFloatParam(apvts, "DYN_EQ3_FREQ", 2800.0f),
+        getFloatParam(apvts, "DYN_EQ4_FREQ", 6200.0f)
+    };
+
+    std::array<float, 4> dynQ
+    {
+        getFloatParam(apvts, "DYN_EQ1_Q", 1.6f),
+        getFloatParam(apvts, "DYN_EQ2_Q", 1.4f),
+        getFloatParam(apvts, "DYN_EQ3_Q", 2.2f),
+        getFloatParam(apvts, "DYN_EQ4_Q", 2.0f)
+    };
+
+    std::array<float, 4> dynThreshold
+    {
+        getFloatParam(apvts, "DYN_EQ1_THRESH", -38.0f),
+        getFloatParam(apvts, "DYN_EQ2_THRESH", -36.0f),
+        getFloatParam(apvts, "DYN_EQ3_THRESH", -34.0f),
+        getFloatParam(apvts, "DYN_EQ4_THRESH", -36.0f)
+    };
+
+    std::array<float, 4> dynAmount
+    {
+        getFloatParam(apvts, "DYN_EQ1_AMOUNT", 2.2f),
+        getFloatParam(apvts, "DYN_EQ2_AMOUNT", 1.8f),
+        getFloatParam(apvts, "DYN_EQ3_AMOUNT", 2.4f),
+        getFloatParam(apvts, "DYN_EQ4_AMOUNT", 1.6f)
+    };
+
+    const float dynAttack = makeCoefficient(getFloatParam(apvts, "DYN_EQ_ATTACK", 8.0f), sampleRate);
+    const float dynRelease = makeCoefficient(getFloatParam(apvts, "DYN_EQ_RELEASE", 160.0f), sampleRate);
+    const float dynMix = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "DYN_EQ_MIX", 100.0f) / 100.0f);
+
+    std::array<BiquadCoefficients, 4> detector;
+    for (size_t band = 0; band < detector.size(); ++band)
+        detector[band] = makeBandPass(dynFreq[band], dynQ[band], sampleRate);
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
@@ -615,6 +678,29 @@ void DspEngine::applyProfessionalVocalEq(juce::AudioBuffer<float>& buffer,
                 wet = state.highShelf.process(wet, highShelf);
                 wet = state.airShelf.process(wet, airShelf);
                 wet *= makeup;
+            }
+
+            if (dynamicOn)
+            {
+                float dynWet = wet;
+
+                for (size_t band = 0; band < 4; ++band)
+                {
+                    const float detected = std::abs(state.dynamicDetector[band].process(wet, detector[band]));
+                    const float envCoef = detected > state.dynamicEnvelope[band] ? dynAttack : dynRelease;
+                    state.dynamicEnvelope[band] = envCoef * state.dynamicEnvelope[band] + (1.0f - envCoef) * detected;
+
+                    const float overDb = juce::jmax(0.0f, safeDb(state.dynamicEnvelope[band]) - dynThreshold[band]);
+                    const float reductionDb = -juce::jlimit(0.0f, dynAmount[band], overDb * 0.33f);
+
+                    if (std::abs(reductionDb) > 0.001f)
+                    {
+                        const auto dynEq = makePeak(dynFreq[band], dynQ[band], reductionDb, sampleRate);
+                        dynWet = state.dynamicBell[band].process(dynWet, dynEq);
+                    }
+                }
+
+                wet = wet * (1.0f - dynMix) + dynWet * dynMix;
             }
 
             data[i] = dry * (1.0f - eqMix) + wet * eqMix;
