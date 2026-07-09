@@ -64,23 +64,44 @@ namespace Parameters
 
         addBool(params, "HPF_ON", "High Pass", true);
         addFloat(params, "HPF_FREQ", "High Pass Frequency", 20.0f, 220.0f, 85.0f);
-        addFloat(params, "HPF_SLOPE", "High Pass Slope", 12.0f, 24.0f, 12.0f, 12.0f);
+        addFloat(params, "HPF_SLOPE", "High Pass Slope", 12.0f, 48.0f, 24.0f, 12.0f);
 
         addBool(params, "EQ_ON", "Surgical EQ", true);
         addFloat(params, "EQ_FREQ", "Surgical EQ Frequency", 120.0f, 6000.0f, 320.0f);
         addFloat(params, "EQ_GAIN", "Surgical EQ Gain", -12.0f, 12.0f, -2.5f);
         addFloat(params, "EQ_Q", "Surgical EQ Q", 0.2f, 12.0f, 4.0f);
+        addFloat(params, "EQ_MIX", "Surgical EQ Mix", 0.0f, 100.0f, 100.0f);
+        addFloat(params, "EQ_MUD_FREQ", "Mud Frequency", 200.0f, 500.0f, 320.0f);
+        addFloat(params, "EQ_MUD_GAIN", "Mud Gain", -12.0f, 3.0f, -2.5f);
+        addFloat(params, "EQ_MUD_Q", "Mud Q", 0.4f, 10.0f, 3.5f);
+        addFloat(params, "EQ_HARSH_FREQ", "Harsh Frequency", 2000.0f, 4500.0f, 3200.0f);
+        addFloat(params, "EQ_HARSH_GAIN", "Harsh Gain", -12.0f, 3.0f, -2.0f);
+        addFloat(params, "EQ_HARSH_Q", "Harsh Q", 0.4f, 10.0f, 3.2f);
+        addFloat(params, "EQ_NOTCH_FREQ", "Notch Frequency", 800.0f, 7000.0f, 2400.0f);
+        addFloat(params, "EQ_NOTCH_GAIN", "Notch Gain", -12.0f, 6.0f, 0.0f);
+        addFloat(params, "EQ_NOTCH_Q", "Notch Q", 1.0f, 18.0f, 8.0f);
 
         addBool(params, "DEESSER_ON", "DeEsser", true);
-        addFloat(params, "DEESSER_THRESH", "DeEsser Threshold", -60.0f, 0.0f, -24.0f);
-        addFloat(params, "DEESSER_REDUCE", "DeEsser Reduce", 0.0f, 24.0f, 6.0f);
+        params.push_back(std::make_unique<juce::AudioParameterChoice>(
+            "DEESSER_MODE", "DeEsser Mode", juce::StringArray { "Wide", "Split" }, 1));
+        addFloat(params, "DEESSER_FREQ", "DeEsser Frequency", 4000.0f, 10000.0f, 6500.0f);
+        addFloat(params, "DEESSER_THRESH", "DeEsser Threshold", -60.0f, 0.0f, -28.0f);
+        addFloat(params, "DEESSER_REDUCE", "DeEsser Reduce", 0.0f, 24.0f, 7.0f);
+        addFloat(params, "DEESSER_AMOUNT", "DeEsser Amount", 0.0f, 100.0f, 70.0f);
+        addFloat(params, "DEESSER_ATTACK", "DeEsser Attack", 0.1f, 25.0f, 2.5f);
+        addFloat(params, "DEESSER_RELEASE", "DeEsser Release", 15.0f, 250.0f, 85.0f);
+        addBool(params, "DEESSER_LISTEN", "DeEsser Listen", false);
 
         addBool(params, "COMP_ON", "Compressor", true);
+        addFloat(params, "COMP_THRESHOLD", "Compressor Threshold", -40.0f, 0.0f, -18.0f);
+        params.push_back(std::make_unique<juce::AudioParameterChoice>(
+            "COMP_RATIO", "Compressor Ratio", juce::StringArray { "4:1", "8:1", "12:1", "20:1" }, 0));
         addFloat(params, "COMP_ATTACK", "Compressor Attack", 0.1f, 50.0f, 12.0f);
         addFloat(params, "COMP_RELEASE", "Compressor Release", 10.0f, 300.0f, 80.0f);
         addFloat(params, "COMP_INPUT", "Compressor Input", -24.0f, 24.0f, 0.0f);
         addFloat(params, "COMP_OUTPUT", "Compressor Output", -24.0f, 24.0f, 0.0f);
         addFloat(params, "COMP_MIX", "Compressor Mix", 0.0f, 100.0f, 75.0f);
+        addBool(params, "COMP_AUTO_MAKEUP", "Compressor Auto Makeup", true);
 
         addBool(params, "TONE_ON", "Tone EQ", true);
         addFloat(params, "TONE_LOW", "Tone Low", -12.0f, 12.0f, 0.0f);
@@ -88,14 +109,28 @@ namespace Parameters
         addFloat(params, "TONE_HIGH", "Tone High", -12.0f, 12.0f, 1.5f);
         addFloat(params, "TONE_AIR", "Tone Air", -6.0f, 6.0f, 1.2f);
         addFloat(params, "TONE_GAIN", "Tone Gain", -12.0f, 12.0f, 0.0f);
+        addFloat(params, "TONE_LOW_FREQ", "Tone Low Frequency", 80.0f, 350.0f, 160.0f);
+        addFloat(params, "TONE_MID_FREQ", "Tone Mid Frequency", 350.0f, 2500.0f, 900.0f);
+        addFloat(params, "TONE_HIGH_FREQ", "Tone High Frequency", 3500.0f, 12000.0f, 6500.0f);
+        addFloat(params, "AIR_FREQ", "Air Frequency", 9000.0f, 20000.0f, 12000.0f);
 
         addBool(params, "SATURATION_ON", "Saturation", true);
+        params.push_back(std::make_unique<juce::AudioParameterChoice>(
+            "SATURATION_MODE", "Saturation Mode", juce::StringArray { "Blend", "Tube", "Tape", "Transformer" }, 0));
         addFloat(params, "SATURATION_DRIVE", "Saturation Drive", 0.0f, 100.0f, 18.0f);
         addFloat(params, "SATURATION_MIX", "Saturation Mix", 0.0f, 100.0f, 35.0f);
+        addFloat(params, "SATURATION_TUBE", "Tube Harmonics", 0.0f, 100.0f, 55.0f);
+        addFloat(params, "SATURATION_TAPE", "Tape Colour", 0.0f, 100.0f, 35.0f);
+        addFloat(params, "SATURATION_TRANSFORMER", "Transformer", 0.0f, 100.0f, 25.0f);
+        addFloat(params, "SATURATION_BIAS", "Saturation Bias", -100.0f, 100.0f, 8.0f);
+        addFloat(params, "SATURATION_OUTPUT", "Saturation Output", -12.0f, 12.0f, 0.0f);
 
         addBool(params, "HIEND_ON", "Hi-End", true);
         addFloat(params, "HIEND_FREQ", "Hi-End Frequency", 8000.0f, 18000.0f, 12000.0f);
         addFloat(params, "HIEND_AMOUNT", "Hi-End Amount", 0.0f, 100.0f, 22.0f);
+        addFloat(params, "HIEND_SPARKLE", "Hi-End Sparkle", 0.0f, 100.0f, 35.0f);
+        addFloat(params, "HIEND_AIR", "Hi-End Air", 0.0f, 100.0f, 45.0f);
+        addFloat(params, "HIEND_MIX", "Hi-End Mix", 0.0f, 100.0f, 65.0f);
 
         addBool(params, "MIX_ON", "Mix", true);
         addFloat(params, "MIX_AMOUNT", "Mix Amount", 0.0f, 100.0f, 100.0f);

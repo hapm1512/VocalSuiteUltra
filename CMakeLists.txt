@@ -38,6 +38,11 @@ target_sources(VocalSuiteUltraPro
         Source/DSP/Engine/DspEngine.h
         Source/DSP/Engine/DspEngine.cpp
 
+        Source/DSP/Saturation/Saturation.h
+        Source/DSP/Saturation/Saturation.cpp
+        Source/DSP/HiEnd/HiEndExciter.h
+        Source/DSP/HiEnd/HiEndExciter.cpp
+
         Source/GUI/Components/GlassPanel.h
         Source/GUI/Components/GlassPanel.cpp
         Source/GUI/Components/HeaderBar.h
@@ -73,6 +78,8 @@ target_include_directories(VocalSuiteUltraPro
         Source
         Source/Parameters
         Source/DSP/Engine
+        Source/DSP/Saturation
+        Source/DSP/HiEnd
         Source/GUI/Components
         Source/GUI/Panels
         Source/GUI/Buttons

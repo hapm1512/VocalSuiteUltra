@@ -25,13 +25,37 @@ public:
     float getGainReductionDb() const noexcept;
 
 private:
+    struct BiquadCoefficients
+    {
+        float b0 = 1.0f;
+        float b1 = 0.0f;
+        float b2 = 0.0f;
+        float a1 = 0.0f;
+        float a2 = 0.0f;
+    };
+
+    struct BiquadState
+    {
+        float z1 = 0.0f;
+        float z2 = 0.0f;
+
+        void reset() noexcept
+        {
+            z1 = 0.0f;
+            z2 = 0.0f;
+        }
+
+        float process(float input, const BiquadCoefficients& c) noexcept
+        {
+            const float output = c.b0 * input + z1;
+            z1 = c.b1 * input - c.a1 * output + z2;
+            z2 = c.b2 * input - c.a2 * output;
+            return output;
+        }
+    };
+
     struct ChannelState
     {
-        float hpf1PreviousInput = 0.0f;
-        float hpf1PreviousOutput = 0.0f;
-        float hpf2PreviousInput = 0.0f;
-        float hpf2PreviousOutput = 0.0f;
-
         float noiseEnvelope = 0.0f;
         float noiseGain = 1.0f;
 
@@ -40,13 +64,45 @@ private:
         int gateHoldSamples = 0;
         bool gateOpen = true;
 
+        float deEsserEnvelope = 0.0f;
+        float deEsserGain = 1.0f;
         float compressorGain = 1.0f;
-
-        float toneLowState = 0.0f;
-        float toneMidLowState = 0.0f;
-        float toneMidHighState = 0.0f;
-        float toneHighState = 0.0f;
+        float compressorEnvelope = 0.0f;
         float hiEndState = 0.0f;
+        float tapeLowState = 0.0f;
+        float tapeHighState = 0.0f;
+        float transformerLowState = 0.0f;
+        float saturationMemory = 0.0f;
+
+        BiquadState hpf1;
+        BiquadState hpf2;
+        BiquadState hpf3;
+        BiquadState hpf4;
+
+        BiquadState mudCut;
+        BiquadState harshCut;
+        BiquadState surgicalNotch;
+        BiquadState lowShelf;
+        BiquadState midPeak;
+        BiquadState highShelf;
+        BiquadState airShelf;
+        BiquadState deEsserBand;
+
+        void resetFilters() noexcept
+        {
+            hpf1.reset();
+            hpf2.reset();
+            hpf3.reset();
+            hpf4.reset();
+            mudCut.reset();
+            harshCut.reset();
+            surgicalNotch.reset();
+            lowShelf.reset();
+            midPeak.reset();
+            highShelf.reset();
+            airShelf.reset();
+            deEsserBand.reset();
+        }
     };
 
     static float getFloatParam(juce::AudioProcessorValueTreeState& apvts,
@@ -63,17 +119,22 @@ private:
 
     static float safeDb(float linear) noexcept;
     static float makeCoefficient(float timeMs, double sr) noexcept;
-    static float onePoleHighPass(float input,
-                                 float alpha,
-                                 float& previousInput,
-                                 float& previousOutput) noexcept;
     static float softClip(float sample, float drive) noexcept;
     static float asymSoftClip(float sample, float drive, float bias) noexcept;
     static float tapeShape(float sample, float drive) noexcept;
+    static float tubeShape(float sample, float drive, float bias) noexcept;
+    static float transformerShape(float sample, float drive, float lowWeight) noexcept;
     static float onePoleLowPass(float input, float coefficient, float& state) noexcept;
     static float onePoleHighPassFromLowPass(float input, float coefficient, float& state) noexcept;
     static float makeOnePoleCoefficient(float frequency, double sr) noexcept;
     static void sanitize(juce::AudioBuffer<float>& buffer) noexcept;
+
+    static BiquadCoefficients makeHighPass(float frequency, float q, double sr) noexcept;
+    static BiquadCoefficients makeBandPass(float frequency, float q, double sr) noexcept;
+    static BiquadCoefficients makePeak(float frequency, float q, float gainDb, double sr) noexcept;
+    static BiquadCoefficients makeLowShelf(float frequency, float gainDb, double sr) noexcept;
+    static BiquadCoefficients makeHighShelf(float frequency, float gainDb, double sr) noexcept;
+    static BiquadCoefficients normalise(float b0, float b1, float b2, float a0, float a1, float a2) noexcept;
 
     void ensureChannelState(int numChannels);
     void updateInputMeters(const juce::AudioBuffer<float>& buffer);
@@ -91,17 +152,20 @@ private:
     void applyHighPass(juce::AudioBuffer<float>& buffer,
                        juce::AudioProcessorValueTreeState& apvts);
 
+    void applyProfessionalVocalEq(juce::AudioBuffer<float>& buffer,
+                                  juce::AudioProcessorValueTreeState& apvts);
+
+    void applyProfessionalDeEsser(juce::AudioBuffer<float>& buffer,
+                                  juce::AudioProcessorValueTreeState& apvts);
+
     void applyPreamp(juce::AudioBuffer<float>& buffer,
                      juce::AudioProcessorValueTreeState& apvts) const;
 
     void applyCoreCompressor(juce::AudioBuffer<float>& buffer,
                              juce::AudioProcessorValueTreeState& apvts);
 
-    void applyToneEq(juce::AudioBuffer<float>& buffer,
-                     juce::AudioProcessorValueTreeState& apvts);
-
     void applySaturationStage(juce::AudioBuffer<float>& buffer,
-                              juce::AudioProcessorValueTreeState& apvts) const;
+                              juce::AudioProcessorValueTreeState& apvts);
 
     void applyHiEndExciter(juce::AudioBuffer<float>& buffer,
                            juce::AudioProcessorValueTreeState& apvts);
