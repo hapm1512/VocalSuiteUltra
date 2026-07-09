@@ -5,6 +5,7 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "Parameters/ParameterLayout.h"
 #include "DSP/Engine/DspEngine.h"
+#include <array>
 
 class VocalSuiteUltraProAudioProcessor final : public juce::AudioProcessor
 {
@@ -28,6 +29,7 @@ public:
     float getTruePeakDb() const noexcept;
     float getOutputPeakDb() const noexcept;
     float getOutputRmsDb() const noexcept;
+    bool copyAnalyzerBuffer(DspEngine::AnalyzerBuffer& destination) const noexcept;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override;

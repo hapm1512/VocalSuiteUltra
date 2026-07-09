@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include <array>
 #include "../Meter/MeterEngine.h"
 
 class DspEngine final
@@ -28,6 +29,10 @@ public:
     float getTruePeakDb() const noexcept;
     float getOutputPeakDb() const noexcept;
     float getOutputRmsDb() const noexcept;
+
+    static constexpr int analyzerFifoSize = 4096;
+    using AnalyzerBuffer = std::array<float, analyzerFifoSize>;
+    bool copyAnalyzerBuffer(AnalyzerBuffer& destination) const noexcept;
 
 private:
     struct BiquadCoefficients
@@ -142,6 +147,7 @@ private:
     static BiquadCoefficients normalise(float b0, float b1, float b2, float a0, float a1, float a2) noexcept;
 
     void ensureChannelState(int numChannels);
+    void pushAnalyzerSamples(const juce::AudioBuffer<float>& buffer) noexcept;
     void updateInputMeters(const juce::AudioBuffer<float>& buffer);
     void updateOutputMeters(const juce::AudioBuffer<float>& buffer);
 
@@ -193,6 +199,10 @@ private:
     std::atomic<float> outputRmsDb { -100.0f };
 
     MeterEngine outputMeter;
+
+    AnalyzerBuffer analyzerFifo {};
+    std::atomic<int> analyzerWriteIndex { 0 };
+    std::atomic<bool> analyzerReady { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DspEngine)
 };

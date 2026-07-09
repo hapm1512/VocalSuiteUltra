@@ -24,6 +24,9 @@ void DspEngine::reset()
     outputPeakDb.store(-100.0f);
     outputRmsDb.store(-100.0f);
     outputMeter.reset();
+    analyzerFifo.fill(0.0f);
+    analyzerWriteIndex.store(0);
+    analyzerReady.store(false);
 }
 
 void DspEngine::process(juce::AudioBuffer<float>& buffer,
@@ -55,6 +58,7 @@ void DspEngine::process(juce::AudioBuffer<float>& buffer,
     applyLimiterAndOutput(buffer, apvts);
 
     sanitize(buffer);
+    pushAnalyzerSamples(buffer);
     updateOutputMeters(buffer);
 }
 
@@ -67,6 +71,22 @@ float DspEngine::getTruePeak() const noexcept { return truePeak.load(); }
 float DspEngine::getTruePeakDb() const noexcept { return truePeakDb.load(); }
 float DspEngine::getOutputPeakDb() const noexcept { return outputPeakDb.load(); }
 float DspEngine::getOutputRmsDb() const noexcept { return outputRmsDb.load(); }
+
+bool DspEngine::copyAnalyzerBuffer(DspEngine::AnalyzerBuffer& destination) const noexcept
+{
+    if (! analyzerReady.load())
+        return false;
+
+    const int write = juce::jlimit(0, analyzerFifoSize - 1, analyzerWriteIndex.load());
+
+    for (int i = 0; i < analyzerFifoSize; ++i)
+    {
+        const int index = (write + i) & (analyzerFifoSize - 1);
+        destination[static_cast<size_t>(i)] = analyzerFifo[static_cast<size_t>(index)];
+    }
+
+    return true;
+}
 
 float DspEngine::getFloatParam(juce::AudioProcessorValueTreeState& apvts,
                                const char* parameterId,
@@ -288,6 +308,32 @@ void DspEngine::ensureChannelState(int numChannels)
 
     if (channelStates.size() != channelCount)
         channelStates.assign(channelCount, {});
+}
+
+void DspEngine::pushAnalyzerSamples(const juce::AudioBuffer<float>& buffer) noexcept
+{
+    const int numChannels = buffer.getNumChannels();
+    const int numSamples = buffer.getNumSamples();
+
+    if (numChannels <= 0 || numSamples <= 0)
+        return;
+
+    int write = analyzerWriteIndex.load();
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        float mono = 0.0f;
+
+        for (int ch = 0; ch < numChannels; ++ch)
+            mono += buffer.getReadPointer(ch)[i];
+
+        mono /= static_cast<float>(numChannels);
+        analyzerFifo[static_cast<size_t>(write)] = juce::jlimit(-1.0f, 1.0f, mono);
+        write = (write + 1) & (analyzerFifoSize - 1);
+    }
+
+    analyzerWriteIndex.store(write);
+    analyzerReady.store(true);
 }
 
 void DspEngine::updateInputMeters(const juce::AudioBuffer<float>& buffer)

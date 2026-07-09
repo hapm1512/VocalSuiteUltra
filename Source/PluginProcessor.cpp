@@ -84,6 +84,11 @@ float VocalSuiteUltraProAudioProcessor::getOutputRmsDb() const noexcept
     return dspEngine.getOutputRmsDb();
 }
 
+bool VocalSuiteUltraProAudioProcessor::copyAnalyzerBuffer(DspEngine::AnalyzerBuffer& destination) const noexcept
+{
+    return dspEngine.copyAnalyzerBuffer(destination);
+}
+
 juce::AudioProcessorEditor* VocalSuiteUltraProAudioProcessor::createEditor()
 {
     return new VocalSuiteUltraProAudioProcessorEditor(*this);

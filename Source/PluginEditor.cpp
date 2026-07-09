@@ -9,6 +9,11 @@ VocalSuiteUltraProAudioProcessorEditor::VocalSuiteUltraProAudioProcessorEditor(
     configurePanels();
     addAllComponents();
 
+    spectrumAnalyzer.setSampleProvider([this] (SpectrumAnalyzer::AudioSnapshot& destination)
+    {
+        return processor.copyAnalyzerBuffer(destination);
+    });
+
     setSize(1536, 864);
     setResizeLimits(1200, 720, 2200, 1400);
     setResizable(true, true);
