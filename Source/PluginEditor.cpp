@@ -24,21 +24,67 @@ void VocalSuiteUltraProAudioProcessorEditor::configurePanels()
         return names;
     };
 
-    correctionPanel.configure("CORRECTION", makeNames({ "SPEED", "MIX" }), juce::Colour(0xff2d8cff), "KEY: D#  |  +3.2 CENT");
-    noisePanel.configure("NOISE REDUCTION", makeNames({ "REDUCE", "DETAIL" }), juce::Colour(0xff54d941), "AI ADAPTIVE");
-    preampPanel.configure("PREAMP", makeNames({ "DRIVE", "OUTPUT" }), juce::Colour(0xffffa326), "MODE: TUBE");
-    gatePanel.configure("GATE", makeNames({ "THRESH", "RANGE", "ATTACK", "RELEASE" }), juce::Colour(0xffc06bff));
-    highPassPanel.configure("HIGH PASS", makeNames({ "FREQ", "SLOPE" }), juce::Colour(0xff34d6ff), "80 Hz  |  12 dB/OCT");
+    auto makeIds = [](std::initializer_list<const char*> items)
+    {
+        juce::StringArray ids;
+        for (auto* item : items)
+            ids.add(item);
+        return ids;
+    };
 
-    surgicalEqPanel.configure("SURGICAL EQ", makeNames({ "FREQ", "GAIN", "Q" }), juce::Colour(0xffffd744));
-    deesserPanel.configure("DE-ESSER", makeNames({ "THRESH", "REDUCE" }), juce::Colour(0xffff72c8), "5.0 kHz - 8.0 kHz");
-    compressorPanel.configure("COMPRESSOR 1176", makeNames({ "ATTACK", "RELEASE", "INPUT", "OUTPUT", "MIX" }), juce::Colour(0xff62a8ff), "RATIO: 4:1");
-    toneEqPanel.configure("TONE EQ", makeNames({ "LOW", "MID", "HIGH", "AIR", "GAIN" }), juce::Colour(0xff80ee66));
-    saturationPanel.configure("SATURATION", makeNames({ "DRIVE", "MIX" }), juce::Colour(0xffffa326), "TYPE: TUBE");
-    hiEndPanel.configure("HI-END EXCITER", makeNames({ "FREQ", "AMOUNT" }), juce::Colour(0xff34d6ff), "12.0 kHz");
+    auto& state = processor.apvts;
 
-    mixPanel.configure("IN / OUT", makeNames({ "MIX" }), juce::Colour(0xff8db7ff));
-    widthPanel.configure("WIDTH", makeNames({ "WIDTH" }), juce::Colour(0xffb98cff), "MONO BASS: ON");
+    correctionPanel.configure(state, "CORRECTION", makeNames({ "SPEED", "MIX" }),
+                              makeIds({ "CORRECTION_SPEED", "CORRECTION_MIX" }),
+                              "CORRECTION_ON", juce::Colour(0xff2d8cff), "KEY: D#  |  +3.2 CENT");
+
+    noisePanel.configure(state, "NOISE REDUCTION", makeNames({ "REDUCE", "DETAIL" }),
+                         makeIds({ "NOISE_REDUCE", "NOISE_DETAIL" }),
+                         "NOISE_ON", juce::Colour(0xff54d941), "AI ADAPTIVE");
+
+    preampPanel.configure(state, "PREAMP", makeNames({ "DRIVE", "OUTPUT" }),
+                          makeIds({ "PREAMP_DRIVE", "PREAMP_OUTPUT" }),
+                          "PREAMP_ON", juce::Colour(0xffffa326), "MODE: TUBE");
+
+    gatePanel.configure(state, "GATE", makeNames({ "THRESH", "RANGE", "ATTACK", "RELEASE" }),
+                        makeIds({ "GATE_THRESH", "GATE_RANGE", "GATE_ATTACK", "GATE_RELEASE" }),
+                        "GATE_ON", juce::Colour(0xffc06bff));
+
+    highPassPanel.configure(state, "HIGH PASS", makeNames({ "FREQ", "SLOPE" }),
+                            makeIds({ "HPF_FREQ", "HPF_SLOPE" }),
+                            "HPF_ON", juce::Colour(0xff34d6ff), "80 Hz  |  12 dB/OCT");
+
+    surgicalEqPanel.configure(state, "SURGICAL EQ", makeNames({ "FREQ", "GAIN", "Q" }),
+                              makeIds({ "EQ_FREQ", "EQ_GAIN", "EQ_Q" }),
+                              "EQ_ON", juce::Colour(0xffffd744));
+
+    deesserPanel.configure(state, "DE-ESSER", makeNames({ "THRESH", "REDUCE" }),
+                           makeIds({ "DEESSER_THRESH", "DEESSER_REDUCE" }),
+                           "DEESSER_ON", juce::Colour(0xffff72c8), "5.0 kHz - 8.0 kHz");
+
+    compressorPanel.configure(state, "COMPRESSOR 1176", makeNames({ "ATTACK", "RELEASE", "INPUT", "OUTPUT", "MIX" }),
+                              makeIds({ "COMP_ATTACK", "COMP_RELEASE", "COMP_INPUT", "COMP_OUTPUT", "COMP_MIX" }),
+                              "COMP_ON", juce::Colour(0xff62a8ff), "RATIO: 4:1");
+
+    toneEqPanel.configure(state, "TONE EQ", makeNames({ "LOW", "MID", "HIGH", "AIR", "GAIN" }),
+                          makeIds({ "TONE_LOW", "TONE_MID", "TONE_HIGH", "TONE_AIR", "TONE_GAIN" }),
+                          "TONE_ON", juce::Colour(0xff80ee66));
+
+    saturationPanel.configure(state, "SATURATION", makeNames({ "DRIVE", "MIX" }),
+                              makeIds({ "SATURATION_DRIVE", "SATURATION_MIX" }),
+                              "SATURATION_ON", juce::Colour(0xffffa326), "TYPE: TUBE");
+
+    hiEndPanel.configure(state, "HI-END EXCITER", makeNames({ "FREQ", "AMOUNT" }),
+                         makeIds({ "HIEND_FREQ", "HIEND_AMOUNT" }),
+                         "HIEND_ON", juce::Colour(0xff34d6ff), "12.0 kHz");
+
+    mixPanel.configure(state, "IN / OUT", makeNames({ "MIX" }),
+                       makeIds({ "MIX_AMOUNT" }),
+                       "MIX_ON", juce::Colour(0xff8db7ff));
+
+    widthPanel.configure(state, "WIDTH", makeNames({ "WIDTH" }),
+                         makeIds({ "WIDTH_AMOUNT" }),
+                         "WIDTH_ON", juce::Colour(0xffb98cff), "MONO BASS: ON");
 }
 
 void VocalSuiteUltraProAudioProcessorEditor::addAllComponents()

@@ -5,24 +5,39 @@ ModulePanel::ModulePanel()
     addAndMakeVisible(powerButton);
 }
 
-void ModulePanel::configure(const juce::String& newTitle,
+void ModulePanel::configure(juce::AudioProcessorValueTreeState& state,
+                            const juce::String& newTitle,
                             const juce::StringArray& knobNames,
+                            const juce::StringArray& parameterIds,
+                            const juce::String& powerParameterId,
                             juce::Colour newAccent,
                             const juce::String& newModeText)
 {
     title = newTitle;
     labels = knobNames;
+    sliderParamIds = parameterIds;
+    powerParamId = powerParameterId;
     accent = newAccent;
     modeText = newModeText;
 
     knobs.clear(true);
+    sliderAttachments.clear();
+    powerAttachment.reset();
 
-    for (int i = 0; i < labels.size(); ++i)
+    powerButton.setButtonText("ON");
+    if (state.getParameter(powerParamId) != nullptr)
+        powerAttachment = std::make_unique<ButtonAttachment>(state, powerParamId, powerButton);
+
+    const int count = juce::jmin(labels.size(), sliderParamIds.size());
+    for (int i = 0; i < count; ++i)
     {
         auto* knob = new ProKnob();
-        knob->setValue(35.0 + (double)((i * 17) % 45), juce::dontSendNotification);
+        knob->setName(labels[i]);
         knobs.add(knob);
         addAndMakeVisible(knob);
+
+        if (state.getParameter(sliderParamIds[i]) != nullptr)
+            sliderAttachments.push_back(std::make_unique<SliderAttachment>(state, sliderParamIds[i], *knob));
     }
 
     resized();
@@ -71,6 +86,8 @@ void ModulePanel::paint(juce::Graphics& g)
 
     if (title.containsIgnoreCase("EQ") || title.containsIgnoreCase("NOISE") || title.containsIgnoreCase("GATE"))
         drawMiniDisplay(g, getLocalBounds().reduced(15, 48).removeFromTop(80));
+
+    drawKnobLabels(g);
 }
 
 void ModulePanel::resized()
@@ -137,4 +154,17 @@ void ModulePanel::drawMiniDisplay(juce::Graphics& g, juce::Rectangle<int> area)
 
     g.setColour(accent);
     g.strokePath(curve, juce::PathStrokeType(1.8f));
+}
+
+void ModulePanel::drawKnobLabels(juce::Graphics& g)
+{
+    g.setColour(juce::Colour(0xff93a0b8));
+    g.setFont(juce::FontOptions(10.5f, juce::Font::bold));
+
+    const int count = juce::jmin(knobs.size(), labels.size());
+    for (int i = 0; i < count; ++i)
+    {
+        auto labelArea = knobs[i]->getBounds().withHeight(16).withY(knobs[i]->getBottom() - 20);
+        g.drawText(labels[i], labelArea, juce::Justification::centred);
+    }
 }
