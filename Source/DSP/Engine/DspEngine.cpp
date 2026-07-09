@@ -714,16 +714,24 @@ void DspEngine::applyProfessionalDeEsser(juce::AudioBuffer<float>& buffer,
     if (! getBoolParam(apvts, "DEESSER_ON", true))
         return;
 
-    const int mode = getChoiceParam(apvts, "DEESSER_MODE", 1);
+    const int mode = getChoiceParam(apvts, "DEESSER_MODE", 1); // 0 = wide, 1 = split
     const bool listen = getBoolParam(apvts, "DEESSER_LISTEN", false);
-    const float frequency = getFloatParam(apvts, "DEESSER_FREQ", 6500.0f);
-    const float thresholdDb = getFloatParam(apvts, "DEESSER_THRESH", -28.0f);
-    const float reduceDb = getFloatParam(apvts, "DEESSER_REDUCE", 7.0f);
-    const float amount = getFloatParam(apvts, "DEESSER_AMOUNT", 70.0f) / 100.0f;
-    const float attackCoef = makeCoefficient(getFloatParam(apvts, "DEESSER_ATTACK", 2.5f), sampleRate);
-    const float releaseCoef = makeCoefficient(getFloatParam(apvts, "DEESSER_RELEASE", 85.0f), sampleRate);
-    const float q = mode == 0 ? 0.65f : 4.0f;
-    const auto band = makeBandPass(frequency, q, sampleRate);
+    const float frequency = juce::jlimit(4000.0f, 10000.0f, getFloatParam(apvts, "DEESSER_FREQ", 6500.0f));
+    const float thresholdDb = juce::jlimit(-60.0f, 0.0f, getFloatParam(apvts, "DEESSER_THRESH", -28.0f));
+    const float rangeDb = juce::jlimit(0.0f, 24.0f, getFloatParam(apvts, "DEESSER_REDUCE", 7.0f));
+    const float amount = juce::jlimit(0.0f, 1.0f, getFloatParam(apvts, "DEESSER_AMOUNT", 70.0f) / 100.0f);
+
+    const float attackMs = juce::jlimit(0.1f, 25.0f, getFloatParam(apvts, "DEESSER_ATTACK", 2.5f));
+    const float releaseMs = juce::jlimit(15.0f, 250.0f, getFloatParam(apvts, "DEESSER_RELEASE", 85.0f));
+    const float attackCoef = makeCoefficient(attackMs, sampleRate);
+    const float releaseCoef = makeCoefficient(releaseMs, sampleRate);
+
+    // Wide mode uses a broad band detector. Split mode focuses tightly on sibilance.
+    const float q = mode == 0 ? 0.80f : 5.25f;
+    const auto sibilanceBand = makeBandPass(frequency, q, sampleRate);
+
+    // Soft knee makes reduction enter gradually and avoids lisp/click artifacts.
+    constexpr float softKneeDb = 8.0f;
     float maxReduction = gainReductionDb.load();
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
@@ -734,20 +742,42 @@ void DspEngine::applyProfessionalDeEsser(juce::AudioBuffer<float>& buffer,
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
             const float dry = data[i];
-            const float sibilance = state.deEsserBand.process(dry, band);
-            const float detector = std::abs(sibilance);
+            const float sibilance = state.deEsserBand.process(dry, sibilanceBand);
+
+            // Hybrid peak/RMS detector: catches fast S peaks without overreacting to air.
+            const float absSib = std::abs(sibilance);
+            const float rmsLike = std::sqrt(0.85f * state.deEsserEnvelope * state.deEsserEnvelope
+                                            + 0.15f * absSib * absSib);
+            const float detector = juce::jmax(absSib * 0.70f, rmsLike);
             const float envCoef = detector > state.deEsserEnvelope ? attackCoef : releaseCoef;
             state.deEsserEnvelope = envCoef * state.deEsserEnvelope + (1.0f - envCoef) * detector;
 
-            const float overDb = juce::jmax(0.0f, safeDb(state.deEsserEnvelope) - thresholdDb);
-            const float reductionDb = juce::jlimit(0.0f, reduceDb, overDb * 0.72f) * amount;
+            const float detectorDb = safeDb(state.deEsserEnvelope);
+            const float overDb = detectorDb - thresholdDb;
+
+            float reductionDb = 0.0f;
+
+            if (overDb > -softKneeDb)
+            {
+                const float kneePosition = juce::jlimit(0.0f, 1.0f, (overDb + softKneeDb) / softKneeDb);
+                const float knee = kneePosition * kneePosition * (3.0f - 2.0f * kneePosition);
+                const float rawReduction = juce::jmax(0.0f, overDb) * 0.85f + knee * 0.35f;
+                reductionDb = juce::jlimit(0.0f, rangeDb, rawReduction) * amount;
+            }
+
             const float targetGain = juce::Decibels::decibelsToGain(-reductionDb);
             const float gainCoef = targetGain < state.deEsserGain ? attackCoef : releaseCoef;
             state.deEsserGain = gainCoef * state.deEsserGain + (1.0f - gainCoef) * targetGain;
 
             const float reducedBand = sibilance * state.deEsserGain;
-            const float processed = dry + (reducedBand - sibilance);
-            data[i] = listen ? sibilance : processed;
+
+            // Split mode reduces only the sibilance band. Wide mode gently ducks the whole signal.
+            const float splitProcessed = dry + (reducedBand - sibilance);
+            const float wideProcessed = dry * (0.72f + 0.28f * state.deEsserGain);
+            const float processed = mode == 0 ? wideProcessed : splitProcessed;
+
+            // Listen mode outputs only detected sibilance after reduction for tuning.
+            data[i] = listen ? reducedBand : processed;
             maxReduction = juce::jmax(maxReduction, reductionDb);
         }
     }

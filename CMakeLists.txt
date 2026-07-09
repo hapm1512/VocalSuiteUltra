@@ -47,6 +47,9 @@ target_sources(VocalSuiteUltraPro
         Source/DSP/EQ/VocalEQ.h
         Source/DSP/EQ/VocalEQ.cpp
 
+        Source/DSP/DeEsser/DeEsser.h
+        Source/DSP/DeEsser/DeEsser.cpp
+
         Source/DSP/Saturation/Saturation.h
         Source/DSP/Saturation/Saturation.cpp
         Source/DSP/HiEnd/HiEndExciter.h
