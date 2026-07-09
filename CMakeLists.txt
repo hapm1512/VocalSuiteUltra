@@ -46,6 +46,13 @@ target_sources(VocalSuiteUltraPro
 
         Source/GUI/LookAndFeel/ProLookAndFeel.h
         Source/GUI/LookAndFeel/ProLookAndFeel.cpp
+
+        Source/GUI/Meters/LevelMeter.h
+        Source/GUI/Meters/LevelMeter.cpp
+        Source/GUI/Meters/LufsMeter.h
+        Source/GUI/Meters/LufsMeter.cpp
+        Source/GUI/Meters/CorrelationMeter.h
+        Source/GUI/Meters/CorrelationMeter.cpp
 )
 
 target_include_directories(VocalSuiteUltraPro
@@ -56,6 +63,7 @@ target_include_directories(VocalSuiteUltraPro
         Source/GUI/Buttons
         Source/GUI/Knobs
         Source/GUI/LookAndFeel
+        Source/GUI/Meters
 )
 
 target_compile_definitions(VocalSuiteUltraPro

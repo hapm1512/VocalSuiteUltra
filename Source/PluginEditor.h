@@ -6,6 +6,9 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 
 #include "PluginProcessor.h"
+#include "LevelMeter.h"
+#include "LufsMeter.h"
+#include "CorrelationMeter.h"
 
 class VocalSuiteUltraProAudioProcessorEditor final : public juce::AudioProcessorEditor
 {
@@ -18,6 +21,11 @@ public:
 
 private:
     VocalSuiteUltraProAudioProcessor& processor;
+
+    LevelMeter inputMeter;
+    LevelMeter outputMeter;
+    LufsMeter lufsMeter;
+    CorrelationMeter correlationMeter;
 
     juce::Rectangle<int> headerArea;
     juce::Rectangle<int> bodyArea;
