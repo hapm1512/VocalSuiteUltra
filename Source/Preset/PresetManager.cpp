@@ -36,10 +36,12 @@ void PresetManager::setChoice(juce::AudioProcessorValueTreeState& apvts,
                               int value) noexcept
 {
     if (auto* parameter = apvts.getParameter(parameterId))
-        parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(value)));
+        parameter->setValueNotifyingHost(
+            parameter->convertTo0to1(static_cast<float>(value)));
 }
 
-void PresetManager::applyFactoryPreset(juce::AudioProcessorValueTreeState& apvts, int index)
+void PresetManager::applyFactoryPreset(juce::AudioProcessorValueTreeState& apvts,
+                                       int index)
 {
     const int preset = juce::jlimit(0, factoryPresetCount - 1, index);
 
@@ -117,4 +119,55 @@ void PresetManager::applyFactoryPreset(juce::AudioProcessorValueTreeState& apvts
         default:
             break;
     }
+}
+
+juce::File PresetManager::getUserPresetFile()
+{
+    auto directory =
+        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+            .getChildFile("Vocal Chain Master")
+            .getChildFile("Presets");
+
+    if (!directory.exists())
+        directory.createDirectory();
+
+    return directory.getChildFile("User Current.vcmpreset");
+}
+
+bool PresetManager::saveUserPreset(
+    juce::AudioProcessorValueTreeState& apvts)
+{
+    const auto file = getUserPresetFile();
+    const auto state = apvts.copyState();
+    const auto xml = state.createXml();
+
+    return xml != nullptr && xml->writeTo(file);
+}
+
+bool PresetManager::loadUserPreset(
+    juce::AudioProcessorValueTreeState& apvts)
+{
+    const auto file = getUserPresetFile();
+
+    if (!file.existsAsFile())
+        return false;
+
+    const auto xml = juce::XmlDocument::parse(file);
+
+    if (xml == nullptr || !xml->hasTagName(apvts.state.getType()))
+        return false;
+
+    apvts.replaceState(juce::ValueTree::fromXml(*xml));
+    return true;
+}
+
+bool PresetManager::deleteUserPreset()
+{
+    const auto file = getUserPresetFile();
+    return !file.existsAsFile() || file.deleteFile();
+}
+
+bool PresetManager::hasUserPreset()
+{
+    return getUserPresetFile().existsAsFile();
 }

@@ -6,6 +6,7 @@ VocalSuiteUltraProAudioProcessorEditor::VocalSuiteUltraProAudioProcessorEditor(
       processor(p)
 {
     configurePanels();
+    configureWorkflow();
     addAllComponents();
 
     spectrumAnalyzer.setSampleProvider([this] (SpectrumAnalyzer::AudioSnapshot& destination)
@@ -38,12 +39,13 @@ void VocalSuiteUltraProAudioProcessorEditor::timerCallback()
     correlationMeter.setCorrelation(processor.getStereoCorrelation(),
                                     processor.getStereoWidth());
 
+    syncHeaderStates();
     footerBar.repaint();
 }
 
 void VocalSuiteUltraProAudioProcessorEditor::configurePanels()
 {
-    auto makeNames = [](std::initializer_list<const char*> items)
+    auto makeNames = [] (std::initializer_list<const char*> items)
     {
         juce::StringArray names;
         for (auto* item : items)
@@ -51,7 +53,7 @@ void VocalSuiteUltraProAudioProcessorEditor::configurePanels()
         return names;
     };
 
-    auto makeIds = [](std::initializer_list<const char*> items)
+    auto makeIds = [] (std::initializer_list<const char*> items)
     {
         juce::StringArray ids;
         for (auto* item : items)
@@ -79,7 +81,7 @@ void VocalSuiteUltraProAudioProcessorEditor::configurePanels()
 
     highPassPanel.configure(state, "HIGH PASS", makeNames({ "FREQ", "SLOPE" }),
                             makeIds({ "HPF_FREQ", "HPF_SLOPE" }),
-                            "HPF_ON", juce::Colour(0xff34d6ff), "80 Hz  |  12 dB/OCT");
+                            "HPF_ON", juce::Colour(0xff34d6ff), "12 / 24 / 36 / 48 dB/OCT");
 
     surgicalEqPanel.configure(state, "SURGICAL EQ", makeNames({ "FREQ", "GAIN", "Q" }),
                               makeIds({ "EQ_FREQ", "EQ_GAIN", "EQ_Q" }),
@@ -89,7 +91,8 @@ void VocalSuiteUltraProAudioProcessorEditor::configurePanels()
                            makeIds({ "DEESSER_THRESH", "DEESSER_REDUCE" }),
                            "DEESSER_ON", juce::Colour(0xffff72c8), "5.0 kHz - 8.0 kHz");
 
-    compressorPanel.configure(state, "COMPRESSOR 1176", makeNames({ "ATTACK", "RELEASE", "INPUT", "OUTPUT", "MIX" }),
+    compressorPanel.configure(state, "COMPRESSOR 1176",
+                              makeNames({ "ATTACK", "RELEASE", "INPUT", "OUTPUT", "MIX" }),
                               makeIds({ "COMP_ATTACK", "COMP_RELEASE", "COMP_INPUT", "COMP_OUTPUT", "COMP_MIX" }),
                               "COMP_ON", juce::Colour(0xff62a8ff), "RATIO: 4:1");
 
@@ -114,12 +117,67 @@ void VocalSuiteUltraProAudioProcessorEditor::configurePanels()
                          "WIDTH_ON", juce::Colour(0xffb98cff), "MONO BASS: ON");
 }
 
+void VocalSuiteUltraProAudioProcessorEditor::configureWorkflow()
+{
+    HeaderBar::Callbacks headerCallbacks;
+
+    headerCallbacks.savePreset = [this]
+    {
+        if (processor.saveUserPreset())
+        {
+            presetBrowser.setUserPresetAvailable(true);
+            presetBrowser.selectUserPreset();
+        }
+    };
+
+    headerCallbacks.deletePreset = [this]
+    {
+        if (processor.deleteUserPreset())
+        {
+            presetBrowser.setUserPresetAvailable(false);
+            presetBrowser.setSelectedFactoryPreset(processor.getCurrentProgram());
+        }
+    };
+
+    headerCallbacks.selectA = [this] { selectSnapshotA(); };
+    headerCallbacks.selectB = [this] { selectSnapshotB(); };
+    headerCallbacks.toggleAB = [this] { toggleSnapshots(); };
+    headerCallbacks.openSettings = [this] (juce::Component* target) { showSettingsMenu(target); };
+    headerCallbacks.toggleOversampling = [this] { toggleOversampling(); };
+    headerCallbacks.togglePower = [this] { toggleGlobalBypass(); };
+    headerBar.setCallbacks(std::move(headerCallbacks));
+
+    juce::StringArray names;
+    for (int i = 0; i < PresetManager::factoryPresetCount; ++i)
+        names.add(processor.getFactoryPresetName(i));
+
+    presetBrowser.setFactoryPresetNames(names);
+    presetBrowser.setUserPresetAvailable(processor.hasUserPreset());
+    presetBrowser.setSelectedFactoryPreset(processor.getCurrentProgram());
+
+    PresetBrowser::Callbacks presetCallbacks;
+    presetCallbacks.loadFactoryPreset = [this] (int index)
+    {
+        processor.loadFactoryPreset(index);
+        presetBrowser.setSelectedFactoryPreset(index);
+    };
+    presetCallbacks.loadUserPreset = [this]
+    {
+        if (processor.loadUserPreset())
+            presetBrowser.selectUserPreset();
+    };
+    presetBrowser.setCallbacks(std::move(presetCallbacks));
+
+    syncHeaderStates();
+}
+
 void VocalSuiteUltraProAudioProcessorEditor::addAllComponents()
 {
     addAndMakeVisible(headerBar);
     addAndMakeVisible(footerBar);
 
-    for (auto* panel : { &inputPanel, &outputPanel, &spectrumPanel, &levelsPanel, &lufsPanel, &correlationPanel, &presetPanel })
+    for (auto* panel : { &inputPanel, &outputPanel, &spectrumPanel, &levelsPanel,
+                         &lufsPanel, &correlationPanel, &presetPanel })
         addAndMakeVisible(panel);
 
     for (auto* panel : { &correctionPanel, &noisePanel, &preampPanel, &gatePanel, &highPassPanel,
@@ -133,12 +191,12 @@ void VocalSuiteUltraProAudioProcessorEditor::addAllComponents()
     addAndMakeVisible(lufsMeter);
     addAndMakeVisible(correlationMeter);
     addAndMakeVisible(spectrumAnalyzer);
+    addAndMakeVisible(presetBrowser);
 }
 
 void VocalSuiteUltraProAudioProcessorEditor::paint(juce::Graphics& g)
 {
     drawBackground(g);
-    drawPresetList(g);
 }
 
 void VocalSuiteUltraProAudioProcessorEditor::resized()
@@ -153,10 +211,6 @@ void VocalSuiteUltraProAudioProcessorEditor::resized()
     footerBar.setBounds(footerArea);
 
     auto area = bodyArea;
-
-    // Reserve enough vertical space for the utility/analyzer row.
-    // The previous fixed 350 + 342 px rows left almost no room,
-    // causing titles, buttons and mode text to overlap.
     const int bottomHeight = juce::jlimit(120, 170, area.getHeight() / 5);
     auto bottom = area.removeFromBottom(bottomHeight);
     area.removeFromBottom(8);
@@ -185,8 +239,7 @@ void VocalSuiteUltraProAudioProcessorEditor::resized()
     saturationPanel.setBounds(mid.removeFromLeft(210).reduced(7, 0));
     hiEndPanel.setBounds(mid.reduced(7, 0));
 
-    // Wider utility panels prevent title/power-button collisions.
-    mixPanel.setBounds(bottom.removeFromLeft(170).reduced(0, 0));
+    mixPanel.setBounds(bottom.removeFromLeft(170));
     widthPanel.setBounds(bottom.removeFromLeft(180).reduced(7, 0));
 
     spectrumPanel.setBounds(bottom.removeFromLeft(390).reduced(7, 0));
@@ -202,6 +255,7 @@ void VocalSuiteUltraProAudioProcessorEditor::resized()
     correlationMeter.setBounds(correlationPanel.getBounds().reduced(12, 42));
 
     presetPanel.setBounds(bottom.reduced(7, 0));
+    presetBrowser.setBounds(presetPanel.getBounds().reduced(12, 42));
 }
 
 void VocalSuiteUltraProAudioProcessorEditor::drawBackground(juce::Graphics& g)
@@ -223,36 +277,121 @@ void VocalSuiteUltraProAudioProcessorEditor::drawBackground(juce::Graphics& g)
     g.drawRect(getLocalBounds(), 1);
 }
 
-void VocalSuiteUltraProAudioProcessorEditor::drawPresetList(juce::Graphics& g)
+void VocalSuiteUltraProAudioProcessorEditor::showSettingsMenu(juce::Component* target)
 {
-    if (presetPanel.getBounds().isEmpty())
-        return;
+    juce::PopupMenu menu;
+    menu.addItem(1, "Undo", processor.undoManager.canUndo());
+    menu.addItem(2, "Redo", processor.undoManager.canRedo());
+    menu.addSeparator();
+    menu.addItem(3, "CPU Safe Mode", true,
+                 getBoolParameter(processor.apvts, "APP_CPU_SAFE"));
+    menu.addItem(4, "Analyzer", true,
+                 getBoolParameter(processor.apvts, "APP_ANALYZER_ON", true));
 
-    auto list = presetPanel.getBounds().reduced(18, 46);
+    const juce::Component::SafePointer<VocalSuiteUltraProAudioProcessorEditor> safeThis(this);
+    const auto options = juce::PopupMenu::Options().withTargetComponent(target);
 
-    const juce::String presets[] =
+    menu.showMenuAsync(options, [safeThis] (int result)
     {
-        "VOCAL - STUDIO PRO",
-        "VOCAL - MALE CLEAR",
-        "VOCAL - FEMALE BRIGHT",
-        "VOCAL - RAP / TRAP",
-        "VOCAL - BALLAD",
-        "VOCAL - LIVE STAGE"
-    };
+        auto* editor = safeThis.getComponent();
+        if (editor == nullptr)
+            return;
 
-    for (int i = 0; i < 6; ++i)
-    {
-        auto row = list.removeFromTop(22);
-        const bool selected = i == 0;
-
-        if (selected)
+        if (result == 1)
+            editor->processor.undo();
+        else if (result == 2)
+            editor->processor.redo();
+        else if (result == 3)
         {
-            g.setColour(juce::Colour(0xff30245c));
-            g.fillRoundedRectangle(row.toFloat(), 5.0f);
+            const bool current = VocalSuiteUltraProAudioProcessorEditor::getBoolParameter(
+                editor->processor.apvts, "APP_CPU_SAFE");
+            VocalSuiteUltraProAudioProcessorEditor::setParameterValue(
+                editor->processor.apvts, "APP_CPU_SAFE", current ? 0.0f : 1.0f);
         }
+        else if (result == 4)
+        {
+            const bool current = VocalSuiteUltraProAudioProcessorEditor::getBoolParameter(
+                editor->processor.apvts, "APP_ANALYZER_ON", true);
+            VocalSuiteUltraProAudioProcessorEditor::setParameterValue(
+                editor->processor.apvts, "APP_ANALYZER_ON", current ? 0.0f : 1.0f);
+        }
+    });
+}
 
-        g.setColour(selected ? juce::Colour(0xffd9ccff) : juce::Colour(0xff8d98ad));
-        g.setFont(juce::FontOptions(12.0f, selected ? juce::Font::bold : juce::Font::plain));
-        g.drawText(presets[i], row.reduced(8, 0), juce::Justification::centredLeft);
-    }
+void VocalSuiteUltraProAudioProcessorEditor::selectSnapshotA()
+{
+    if (!snapshotAActive)
+        processor.copyCurrentStateToB();
+
+    processor.recallA();
+    snapshotAActive = true;
+    headerBar.setABState(true);
+}
+
+void VocalSuiteUltraProAudioProcessorEditor::selectSnapshotB()
+{
+    if (snapshotAActive)
+        processor.copyCurrentStateToA();
+
+    processor.recallB();
+    snapshotAActive = false;
+    headerBar.setABState(false);
+}
+
+void VocalSuiteUltraProAudioProcessorEditor::toggleSnapshots()
+{
+    if (snapshotAActive)
+        selectSnapshotB();
+    else
+        selectSnapshotA();
+}
+
+void VocalSuiteUltraProAudioProcessorEditor::toggleOversampling()
+{
+    const int current = getChoiceParameterIndex(processor.apvts, "APP_OVERSAMPLING");
+    setParameterValue(processor.apvts, "APP_OVERSAMPLING", current == 2 ? 0.0f : 2.0f);
+    syncHeaderStates();
+}
+
+void VocalSuiteUltraProAudioProcessorEditor::toggleGlobalBypass()
+{
+    const bool bypassed = getBoolParameter(processor.apvts, "APP_BYPASS");
+    setParameterValue(processor.apvts, "APP_BYPASS", bypassed ? 0.0f : 1.0f);
+    syncHeaderStates();
+}
+
+void VocalSuiteUltraProAudioProcessorEditor::syncHeaderStates()
+{
+    headerBar.setABState(snapshotAActive);
+    headerBar.setOversamplingActive(getChoiceParameterIndex(processor.apvts, "APP_OVERSAMPLING") == 2);
+    headerBar.setPowerActive(!getBoolParameter(processor.apvts, "APP_BYPASS"));
+}
+
+bool VocalSuiteUltraProAudioProcessorEditor::getBoolParameter(
+    juce::AudioProcessorValueTreeState& state,
+    const juce::String& id,
+    bool fallback)
+{
+    if (const auto* value = state.getRawParameterValue(id))
+        return value->load() >= 0.5f;
+    return fallback;
+}
+
+int VocalSuiteUltraProAudioProcessorEditor::getChoiceParameterIndex(
+    juce::AudioProcessorValueTreeState& state,
+    const juce::String& id,
+    int fallback)
+{
+    if (const auto* value = state.getRawParameterValue(id))
+        return juce::roundToInt(value->load());
+    return fallback;
+}
+
+void VocalSuiteUltraProAudioProcessorEditor::setParameterValue(
+    juce::AudioProcessorValueTreeState& state,
+    const juce::String& id,
+    float plainValue)
+{
+    if (auto* parameter = state.getParameter(id))
+        parameter->setValueNotifyingHost(parameter->convertTo0to1(plainValue));
 }

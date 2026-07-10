@@ -10,6 +10,12 @@ public:
     static juce::String getFactoryPresetName(int index);
     static void applyFactoryPreset(juce::AudioProcessorValueTreeState& apvts, int index);
 
+    static bool saveUserPreset(juce::AudioProcessorValueTreeState& apvts);
+    static bool loadUserPreset(juce::AudioProcessorValueTreeState& apvts);
+    static bool deleteUserPreset();
+    static bool hasUserPreset();
+    static juce::File getUserPresetFile();
+
 private:
     static void setFloat(juce::AudioProcessorValueTreeState& apvts,
                          const char* parameterId,

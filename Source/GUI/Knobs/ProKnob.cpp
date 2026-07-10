@@ -7,6 +7,12 @@ ProKnob::ProKnob()
     setRange(0.0, 100.0, 0.1);
     setValue(50.0);
     setDoubleClickReturnValue(true, 50.0);
+    setMouseDragSensitivity(320);
+}
+
+void ProKnob::setDragSensitivity(int pixelsForFullRange)
+{
+    setMouseDragSensitivity(juce::jmax(80, pixelsForFullRange));
 }
 
 void ProKnob::paint(juce::Graphics& g)

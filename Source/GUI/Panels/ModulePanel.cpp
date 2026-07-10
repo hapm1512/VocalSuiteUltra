@@ -74,6 +74,8 @@ void ModulePanel::configure(juce::AudioProcessorValueTreeState& state,
     {
         auto* knob = new ProKnob();
         knob->setName(labels[i]);
+        knob->setTooltip(title + " - " + labels[i]);
+        knob->setDragSensitivity(sliderParamIds[i] == "HPF_SLOPE" ? 520 : 320);
         knobs.add(knob);
         addAndMakeVisible(knob);
 

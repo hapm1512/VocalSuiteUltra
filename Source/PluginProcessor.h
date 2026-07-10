@@ -47,6 +47,11 @@ public:
     void copyAtoB();
     void copyBtoA();
 
+    bool saveUserPreset();
+    bool loadUserPreset();
+    bool deleteUserPreset();
+    bool hasUserPreset() const;
+
     bool undo();
     bool redo();
 
@@ -77,6 +82,8 @@ private:
     juce::ValueTree stateA;
     juce::ValueTree stateB;
     int currentProgramIndex = 0;
+    juce::AudioBuffer<float> dryBuffer;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> bypassMix;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VocalSuiteUltraProAudioProcessor)
 };

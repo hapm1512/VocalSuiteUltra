@@ -14,9 +14,10 @@
 #include "LufsMeter.h"
 #include "CorrelationMeter.h"
 #include "SpectrumAnalyzer.h"
+#include "PresetBrowser.h"
 
 class VocalSuiteUltraProAudioProcessorEditor final : public juce::AudioProcessorEditor,
-                                               private juce::Timer
+                                                      private juce::Timer
 {
 public:
     explicit VocalSuiteUltraProAudioProcessorEditor(VocalSuiteUltraProAudioProcessor&);
@@ -32,13 +33,14 @@ private:
 
     HeaderBar headerBar;
     FooterBar footerBar;
+    juce::TooltipWindow tooltipWindow { this, 700 };
 
     GlassPanel inputPanel { "INPUT" };
     GlassPanel outputPanel { "OUTPUT" };
     GlassPanel spectrumPanel { "VOCAL EQ" };
     GlassPanel levelsPanel { "LEVELS" };
     GlassPanel lufsPanel { "LOUDNESS" };
-    GlassPanel correlationPanel { "CORRELATION" };
+    GlassPanel correlationPanel { "STEREO" };
     GlassPanel presetPanel { "PRESETS" };
 
     ModulePanel correctionPanel;
@@ -61,15 +63,36 @@ private:
     LufsMeter lufsMeter;
     CorrelationMeter correlationMeter;
     SpectrumAnalyzer spectrumAnalyzer;
+    PresetBrowser presetBrowser;
 
     juce::Rectangle<int> headerArea;
     juce::Rectangle<int> bodyArea;
     juce::Rectangle<int> footerArea;
 
+    bool snapshotAActive = true;
+
     void configurePanels();
+    void configureWorkflow();
     void addAllComponents();
     void drawBackground(juce::Graphics&);
-    void drawPresetList(juce::Graphics&);
+    void showSettingsMenu(juce::Component* target);
+
+    void selectSnapshotA();
+    void selectSnapshotB();
+    void toggleSnapshots();
+    void toggleOversampling();
+    void toggleGlobalBypass();
+    void syncHeaderStates();
+
+    static bool getBoolParameter(juce::AudioProcessorValueTreeState& state,
+                                 const juce::String& id,
+                                 bool fallback = false);
+    static int getChoiceParameterIndex(juce::AudioProcessorValueTreeState& state,
+                                       const juce::String& id,
+                                       int fallback = 0);
+    static void setParameterValue(juce::AudioProcessorValueTreeState& state,
+                                  const juce::String& id,
+                                  float plainValue);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VocalSuiteUltraProAudioProcessorEditor)
 };

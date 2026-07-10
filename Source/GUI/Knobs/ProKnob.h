@@ -7,6 +7,7 @@ class ProKnob final : public juce::Slider
 public:
     ProKnob();
 
+    void setDragSensitivity(int pixelsForFullRange);
     void paint(juce::Graphics& g) override;
 
 private:

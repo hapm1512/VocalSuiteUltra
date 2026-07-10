@@ -190,6 +190,7 @@ namespace Parameters
         addBool(params, "LIMITER_ISP", "Limiter ISP Protection", true);
 
 
+        addBool(params, "APP_BYPASS", "Global Bypass", false);
         addBool(params, "APP_CPU_SAFE", "CPU Safe Mode", false);
         addBool(params, "APP_ANALYZER_ON", "Analyzer Enabled", true);
         params.push_back(std::make_unique<juce::AudioParameterChoice>(

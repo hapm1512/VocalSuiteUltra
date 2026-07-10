@@ -14,6 +14,9 @@ VocalSuiteUltraProAudioProcessor::VocalSuiteUltraProAudioProcessor()
 void VocalSuiteUltraProAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     dspEngine.prepare(sampleRate, samplesPerBlock, getTotalNumOutputChannels());
+    dryBuffer.setSize(getTotalNumOutputChannels(), samplesPerBlock, false, false, true);
+    bypassMix.reset(sampleRate, 0.02);
+    bypassMix.setCurrentAndTargetValue(0.0f);
 }
 
 void VocalSuiteUltraProAudioProcessor::releaseResources()
@@ -37,7 +40,32 @@ void VocalSuiteUltraProAudioProcessor::processBlock(juce::AudioBuffer<float>& bu
     for (auto ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear(ch, 0, buffer.getNumSamples());
 
+    if (dryBuffer.getNumChannels() < buffer.getNumChannels()
+        || dryBuffer.getNumSamples() < buffer.getNumSamples())
+    {
+        dryBuffer.setSize(buffer.getNumChannels(), buffer.getNumSamples(), false, false, true);
+    }
+
+    for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        dryBuffer.copyFrom(channel, 0, buffer, channel, 0, buffer.getNumSamples());
+
     dspEngine.process(buffer, apvts);
+
+    const bool bypassed = apvts.getRawParameterValue("APP_BYPASS")->load() >= 0.5f;
+    bypassMix.setTargetValue(bypassed ? 1.0f : 0.0f);
+
+    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+    {
+        const float dryAmount = bypassMix.getNextValue();
+        const float wetAmount = 1.0f - dryAmount;
+
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        {
+            const float wet = buffer.getSample(channel, sample);
+            const float dry = dryBuffer.getSample(channel, sample);
+            buffer.setSample(channel, sample, wet * wetAmount + dry * dryAmount);
+        }
+    }
 }
 
 
@@ -197,6 +225,27 @@ void VocalSuiteUltraProAudioProcessor::copyBtoA()
 {
     if (stateB.isValid())
         stateA = stateB.createCopy();
+}
+
+
+bool VocalSuiteUltraProAudioProcessor::saveUserPreset()
+{
+    return PresetManager::saveUserPreset(apvts);
+}
+
+bool VocalSuiteUltraProAudioProcessor::loadUserPreset()
+{
+    return PresetManager::loadUserPreset(apvts);
+}
+
+bool VocalSuiteUltraProAudioProcessor::deleteUserPreset()
+{
+    return PresetManager::deleteUserPreset();
+}
+
+bool VocalSuiteUltraProAudioProcessor::hasUserPreset() const
+{
+    return PresetManager::hasUserPreset();
 }
 
 bool VocalSuiteUltraProAudioProcessor::undo()
