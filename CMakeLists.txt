@@ -15,7 +15,7 @@ juce_add_plugin(VocalSuiteUltraPro
     BUNDLE_ID "com.haipham.vocalsuiteultrapro"
     PLUGIN_MANUFACTURER_CODE Haip
     PLUGIN_CODE Vsup
-    FORMATS VST3 Standalone
+    FORMATS VST3
     PRODUCT_NAME "VocalSuiteUltraPro"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
@@ -131,6 +131,44 @@ target_link_libraries(VocalSuiteUltraPro
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# Custom standalone host: removes JUCE's default warning banner and Settings button.
+juce_add_gui_app(VocalSuiteUltraProStandalone
+    PRODUCT_NAME "VocalSuiteUltraPro"
+    COMPANY_NAME "Hai Pham"
+)
+
+target_sources(VocalSuiteUltraProStandalone
+    PRIVATE
+        Source/Standalone/Main.cpp
+)
+
+target_include_directories(VocalSuiteUltraProStandalone
+    PRIVATE
+        Source
+)
+
+target_compile_definitions(VocalSuiteUltraProStandalone
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_REPORT_APP_USAGE=0
+)
+
+target_link_libraries(VocalSuiteUltraProStandalone
+    PRIVATE
+        VocalSuiteUltraPro
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
+if(MSVC)
+    target_compile_options(VocalSuiteUltraProStandalone PRIVATE /W4 /permissive- /Zc:__cplusplus /utf-8)
+endif()
 
 if(MSVC)
     target_compile_options(VocalSuiteUltraPro PRIVATE /W4 /permissive- /Zc:__cplusplus /utf-8)
