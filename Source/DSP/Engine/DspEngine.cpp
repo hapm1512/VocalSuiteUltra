@@ -54,9 +54,12 @@ void DspEngine::process(juce::AudioBuffer<float>& buffer,
     applyAdaptiveNoiseReduction(buffer, apvts);
     applySoftGate(buffer, apvts);
     applyHighPass(buffer, apvts);
+
+    // Gain-staged vocal chain: colour the clean signal first, then shape and control it.
+    // This prevents the EQ and dynamics stages from feeding an unnecessarily hot preamp.
+    applyPreamp(buffer, apvts);
     applyProfessionalVocalEq(buffer, apvts);
     applyProfessionalDeEsser(buffer, apvts);
-    applyPreamp(buffer, apvts);
     applyCoreCompressor(buffer, apvts);
     applySaturationStage(buffer, apvts);
     applyHiEndExciter(buffer, apvts);
@@ -852,9 +855,14 @@ void DspEngine::applyPreamp(juce::AudioBuffer<float>& buffer,
     // -> auto loudness compensation -> DC block -> slew limiting -> soft ceiling.
     const float headroomGain = juce::Decibels::decibelsToGain(-juce::jlimit(0.0f, 18.0f, headroomDb));
     const float outputGain = juce::Decibels::decibelsToGain(juce::jlimit(-18.0f, 12.0f, requestedOutputDb));
-    const float autoTrimDb = -(driveCurve * (safeMode ? 8.5f : 5.8f)) - (harmonicAmount * colourAmount * 1.5f);
-    const float autoTrim = juce::Decibels::decibelsToGain(autoTrimDb);
-    const float targetMakeup = outputGain * autoTrim / juce::jmax(0.25f, headroomGain * (safeMode ? 1.0f : 0.80f));
+    const float autoTrimDb = -(driveCurve * (safeMode ? 8.5f : 5.8f))
+                           - (harmonicAmount * colourAmount * 1.5f);
+
+    // Recover only part of the input headroom. Fully restoring all 12 dB here made
+    // the following compressor and limiter work too hard when Drive was high.
+    const float headroomRecoveryDb = safeMode ? headroomDb * 0.70f : headroomDb * 0.85f;
+    const float targetMakeup = outputGain
+                             * juce::Decibels::decibelsToGain(autoTrimDb + headroomRecoveryDb);
     const float ceiling = juce::Decibels::decibelsToGain(juce::jlimit(-12.0f, -0.3f, ceilingDb));
 
     const float dcCoefficient = makeOnePoleCoefficient(18.0f, sampleRate);
@@ -1016,10 +1024,8 @@ void DspEngine::applyCoreCompressor(juce::AudioBuffer<float>& buffer,
     const float scHpfCoeff = makeOnePoleCoefficient(scHpfHz, sampleRate);
     const float attackCoef = makeCoefficient(attackTimeMs, sampleRate);
 
-    // Analog style auto makeup: conservative to avoid output jump.
-    const float makeupDb = autoMakeup ? juce::jlimit(0.0f, 7.0f, (ratio - 1.0f) * 0.33f) : 0.0f;
-    const float makeupGain = juce::Decibels::decibelsToGain(makeupDb);
-
+    // Makeup is derived from actual gain reduction below. A fixed ratio-based boost
+    // caused loudness jumps even when the signal was below threshold.
     float maxReduction = 0.0f;
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
@@ -1070,10 +1076,14 @@ void DspEngine::applyCoreCompressor(juce::AudioBuffer<float>& buffer,
             else
                 compressed = compressed + 0.012f * (compressed * compressed * compressed);
 
-            compressed *= makeupGain * outputGain;
+            const float dynamicMakeupDb = autoMakeup
+                ? juce::jlimit(0.0f, 4.0f, reductionDb * 0.32f)
+                : 0.0f;
+            const float dynamicMakeup = juce::Decibels::decibelsToGain(dynamicMakeupDb);
+            compressed *= dynamicMakeup * outputGain;
 
             const float wet = dry * (1.0f - mix) + compressed * mix;
-            data[i] = juce::jlimit(-1.15f, 1.15f, wet);
+            data[i] = softCeiling(wet, juce::Decibels::decibelsToGain(-1.5f), 0.22f);
             maxReduction = juce::jmax(maxReduction, reductionDb);
         }
     }
@@ -1135,7 +1145,8 @@ void DspEngine::applySaturationStage(juce::AudioBuffer<float>& buffer,
             const float coloured = wet * normalise * trim * outputGain;
             const float smoothed = coloured * 0.985f + state.saturationMemory * 0.015f;
             state.saturationMemory = smoothed;
-            data[i] = dry * (1.0f - mix) + smoothed * mix;
+            const float blended = dry * (1.0f - mix) + smoothed * mix;
+            data[i] = softCeiling(blended, juce::Decibels::decibelsToGain(-1.8f), 0.18f);
         }
     }
 }
@@ -1154,6 +1165,7 @@ void DspEngine::applyHiEndExciter(juce::AudioBuffer<float>& buffer,
     const float coeff = makeOnePoleCoefficient(frequency, sampleRate);
     const float harmonicGain = amount * (0.18f + sparkleAmount * 0.36f);
     const float airGain = amount * (0.10f + airAmount * 0.24f);
+    const float autoTrim = juce::Decibels::decibelsToGain(-amount * (0.55f + 0.45f * mix));
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
@@ -1167,7 +1179,7 @@ void DspEngine::applyHiEndExciter(juce::AudioBuffer<float>& buffer,
             const float rectified = std::abs(high) * 2.0f - high * 0.35f;
             const float harmonics = softClip(rectified, 2.6f) * harmonicGain;
             const float airy = softClip(high * 2.2f, 1.8f) * airGain;
-            const float wet = dry + harmonics + airy;
+            const float wet = (dry + harmonics + airy) * autoTrim;
             data[i] = dry * (1.0f - mix) + wet * mix;
         }
     }
