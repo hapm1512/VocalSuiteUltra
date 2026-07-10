@@ -13,6 +13,12 @@ VocalSuiteUltraProAudioProcessorEditor::VocalSuiteUltraProAudioProcessorEditor(
         return processor.copyAnalyzerBuffer(destination);
     });
 
+    spectrumAnalyzer.setEqParameterSource(processor.apvts, [this]
+    {
+        const double currentSampleRate = processor.getSampleRate();
+        return currentSampleRate > 0.0 ? currentSampleRate : 48000.0;
+    });
+
     setSize(1536, 864);
     setResizeLimits(1200, 720, 2200, 1400);
     setResizable(true, true);

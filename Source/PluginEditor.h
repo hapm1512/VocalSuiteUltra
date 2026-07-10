@@ -35,7 +35,7 @@ private:
 
     GlassPanel inputPanel { "INPUT" };
     GlassPanel outputPanel { "OUTPUT" };
-    GlassPanel spectrumPanel { "SPECTRUM ANALYZER" };
+    GlassPanel spectrumPanel { "VOCAL EQ" };
     GlassPanel levelsPanel { "LEVELS" };
     GlassPanel lufsPanel { "LOUDNESS" };
     GlassPanel correlationPanel { "CORRELATION" };
