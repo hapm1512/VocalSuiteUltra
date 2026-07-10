@@ -147,9 +147,18 @@ void VocalSuiteUltraProAudioProcessorEditor::resized()
     footerBar.setBounds(footerArea);
 
     auto area = bodyArea;
-    auto top = area.removeFromTop(350);
-    auto mid = area.removeFromTop(342);
-    auto bottom = area;
+
+    // Reserve enough vertical space for the utility/analyzer row.
+    // The previous fixed 350 + 342 px rows left almost no room,
+    // causing titles, buttons and mode text to overlap.
+    const int bottomHeight = juce::jlimit(120, 170, area.getHeight() / 5);
+    auto bottom = area.removeFromBottom(bottomHeight);
+    area.removeFromBottom(8);
+
+    const int topHeight = area.getHeight() / 2;
+    auto top = area.removeFromTop(topHeight);
+    area.removeFromTop(8);
+    auto mid = area;
 
     inputPanel.setBounds(top.removeFromLeft(100));
     inputMeter.setBounds(inputPanel.getBounds().reduced(25, 56));
@@ -170,20 +179,21 @@ void VocalSuiteUltraProAudioProcessorEditor::resized()
     saturationPanel.setBounds(mid.removeFromLeft(210).reduced(7, 0));
     hiEndPanel.setBounds(mid.reduced(7, 0));
 
-    mixPanel.setBounds(bottom.removeFromLeft(130));
-    widthPanel.setBounds(bottom.removeFromLeft(130).reduced(7, 0));
+    // Wider utility panels prevent title/power-button collisions.
+    mixPanel.setBounds(bottom.removeFromLeft(170).reduced(0, 0));
+    widthPanel.setBounds(bottom.removeFromLeft(180).reduced(7, 0));
 
-    spectrumPanel.setBounds(bottom.removeFromLeft(440).reduced(7, 0));
+    spectrumPanel.setBounds(bottom.removeFromLeft(390).reduced(7, 0));
     spectrumAnalyzer.setBounds(spectrumPanel.getBounds().reduced(14, 42));
 
-    levelsPanel.setBounds(bottom.removeFromLeft(170).reduced(7, 0));
-    levelMeter.setBounds(levelsPanel.getBounds().reduced(28, 42));
+    levelsPanel.setBounds(bottom.removeFromLeft(150).reduced(7, 0));
+    levelMeter.setBounds(levelsPanel.getBounds().reduced(24, 42));
 
-    lufsPanel.setBounds(bottom.removeFromLeft(160).reduced(7, 0));
-    lufsMeter.setBounds(lufsPanel.getBounds().reduced(14, 42));
+    lufsPanel.setBounds(bottom.removeFromLeft(150).reduced(7, 0));
+    lufsMeter.setBounds(lufsPanel.getBounds().reduced(12, 42));
 
-    correlationPanel.setBounds(bottom.removeFromLeft(180).reduced(7, 0));
-    correlationMeter.setBounds(correlationPanel.getBounds().reduced(14, 42));
+    correlationPanel.setBounds(bottom.removeFromLeft(170).reduced(7, 0));
+    correlationMeter.setBounds(correlationPanel.getBounds().reduced(12, 42));
 
     presetPanel.setBounds(bottom.reduced(7, 0));
 }

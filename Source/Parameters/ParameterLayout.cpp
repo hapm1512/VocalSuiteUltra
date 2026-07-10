@@ -189,6 +189,19 @@ namespace Parameters
         addFloat(params, "LIMITER_SOFTCLIP", "Limiter Soft Clip", 0.0f, 100.0f, 35.0f);
         addBool(params, "LIMITER_ISP", "Limiter ISP Protection", true);
 
+
+        addBool(params, "APP_CPU_SAFE", "CPU Safe Mode", false);
+        addBool(params, "APP_ANALYZER_ON", "Analyzer Enabled", true);
+        params.push_back(std::make_unique<juce::AudioParameterChoice>(
+            "APP_OVERSAMPLING", "Oversampling", juce::StringArray { "Off", "2x", "4x" }, 0));
+        addBool(params, "PITCH_ON", "Pitch Correction Hook", false);
+        addFloat(params, "PITCH_AMOUNT", "Pitch Correction Amount", 0.0f, 100.0f, 0.0f);
+        addFloat(params, "PITCH_SPEED", "Pitch Correction Speed", 0.0f, 100.0f, 45.0f);
+        params.push_back(std::make_unique<juce::AudioParameterChoice>(
+            "PITCH_KEY", "Pitch Key", juce::StringArray { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }, 0));
+        params.push_back(std::make_unique<juce::AudioParameterChoice>(
+            "PITCH_SCALE", "Pitch Scale", juce::StringArray { "Major", "Minor", "Chromatic" }, 2));
+
         return { params.begin(), params.end() };
     }
 }

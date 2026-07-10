@@ -5,8 +5,10 @@ VocalSuiteUltraProAudioProcessor::VocalSuiteUltraProAudioProcessor()
     : AudioProcessor(BusesProperties()
         .withInput("Input", juce::AudioChannelSet::stereo(), true)
         .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts(*this, nullptr, "PARAMETERS", Parameters::createLayout())
+      apvts(*this, &undoManager, "PARAMETERS", Parameters::createLayout())
 {
+    stateA = apvts.copyState();
+    stateB = apvts.copyState();
 }
 
 void VocalSuiteUltraProAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
@@ -127,17 +129,84 @@ bool VocalSuiteUltraProAudioProcessor::producesMidi() const { return false; }
 bool VocalSuiteUltraProAudioProcessor::isMidiEffect() const { return false; }
 double VocalSuiteUltraProAudioProcessor::getTailLengthSeconds() const { return 0.0; }
 
-int VocalSuiteUltraProAudioProcessor::getNumPrograms() { return 1; }
-int VocalSuiteUltraProAudioProcessor::getCurrentProgram() { return 0; }
-void VocalSuiteUltraProAudioProcessor::setCurrentProgram(int index) { juce::ignoreUnused(index); }
+int VocalSuiteUltraProAudioProcessor::getNumPrograms()
+{
+    return PresetManager::factoryPresetCount;
+}
+
+int VocalSuiteUltraProAudioProcessor::getCurrentProgram()
+{
+    return currentProgramIndex;
+}
+
+void VocalSuiteUltraProAudioProcessor::setCurrentProgram(int index)
+{
+    loadFactoryPreset(index);
+}
+
 const juce::String VocalSuiteUltraProAudioProcessor::getProgramName(int index)
 {
-    juce::ignoreUnused(index);
-    return {};
+    return getFactoryPresetName(index);
 }
+
 void VocalSuiteUltraProAudioProcessor::changeProgramName(int index, const juce::String& newName)
 {
     juce::ignoreUnused(index, newName);
+}
+
+void VocalSuiteUltraProAudioProcessor::loadFactoryPreset(int index)
+{
+    currentProgramIndex = juce::jlimit(0, PresetManager::factoryPresetCount - 1, index);
+    PresetManager::applyFactoryPreset(apvts, currentProgramIndex);
+}
+
+juce::String VocalSuiteUltraProAudioProcessor::getFactoryPresetName(int index) const
+{
+    return PresetManager::getFactoryPresetName(index);
+}
+
+void VocalSuiteUltraProAudioProcessor::copyCurrentStateToA()
+{
+    stateA = apvts.copyState();
+}
+
+void VocalSuiteUltraProAudioProcessor::copyCurrentStateToB()
+{
+    stateB = apvts.copyState();
+}
+
+void VocalSuiteUltraProAudioProcessor::recallA()
+{
+    if (stateA.isValid())
+        apvts.replaceState(stateA.createCopy());
+}
+
+void VocalSuiteUltraProAudioProcessor::recallB()
+{
+    if (stateB.isValid())
+        apvts.replaceState(stateB.createCopy());
+}
+
+void VocalSuiteUltraProAudioProcessor::copyAtoB()
+{
+    if (stateA.isValid())
+        stateB = stateA.createCopy();
+}
+
+void VocalSuiteUltraProAudioProcessor::copyBtoA()
+{
+    if (stateB.isValid())
+        stateA = stateB.createCopy();
+}
+
+bool VocalSuiteUltraProAudioProcessor::undo()
+{
+    return undoManager.undo();
+}
+
+bool VocalSuiteUltraProAudioProcessor::redo()
+{
+    return undoManager.redo();
 }
 
 void VocalSuiteUltraProAudioProcessor::getStateInformation(juce::MemoryBlock& destData)

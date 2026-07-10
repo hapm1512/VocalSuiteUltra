@@ -83,6 +83,11 @@ target_sources(VocalSuiteUltraPro
 
         Source/GUI/Analyzer/SpectrumAnalyzer.h
         Source/GUI/Analyzer/SpectrumAnalyzer.cpp
+
+        Source/Preset/PresetManager.h
+        Source/Preset/PresetManager.cpp
+        Source/License/LicenseManager.h
+        Source/License/LicenseManager.cpp
 )
 
 target_include_directories(VocalSuiteUltraPro
@@ -101,6 +106,8 @@ target_include_directories(VocalSuiteUltraPro
         Source/GUI/LookAndFeel
         Source/GUI/Meters
         Source/GUI/Analyzer
+        Source/Preset
+        Source/License
 
 )
 

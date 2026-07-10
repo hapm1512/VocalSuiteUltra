@@ -5,6 +5,7 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "Parameters/ParameterLayout.h"
 #include "DSP/Engine/DspEngine.h"
+#include "Preset/PresetManager.h"
 #include <array>
 
 class VocalSuiteUltraProAudioProcessor final : public juce::AudioProcessor
@@ -36,6 +37,19 @@ public:
     float getStereoWidth() const noexcept;
     bool copyAnalyzerBuffer(DspEngine::AnalyzerBuffer& destination) const noexcept;
 
+    void loadFactoryPreset(int index);
+    juce::String getFactoryPresetName(int index) const;
+
+    void copyCurrentStateToA();
+    void copyCurrentStateToB();
+    void recallA();
+    void recallB();
+    void copyAtoB();
+    void copyBtoA();
+
+    bool undo();
+    bool redo();
+
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override;
 
@@ -55,10 +69,14 @@ public:
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
+    juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
 
 private:
     DspEngine dspEngine;
+    juce::ValueTree stateA;
+    juce::ValueTree stateB;
+    int currentProgramIndex = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VocalSuiteUltraProAudioProcessor)
 };
